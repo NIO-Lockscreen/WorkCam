@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Always-On Clock + Camera — Black Screen Fix</title>
+  <title>Always-On Clock + Camera — Safe Image Mode</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -661,7 +661,7 @@
     </div>
 
     <div class="fineprint" id="debugText">
-      UI ready. Camera requires HTTPS or localhost. Streaming uses PeerJS public signalling with TURN fallback.
+      UI ready. Camera requires HTTPS or localhost. Safe mode uses PeerJS data channel image frames.
     </div>
   </section>
 
@@ -763,6 +763,8 @@
   let remoteRenderTimer = null;
   let snapshotFallbackActive = false;
   let snapshotTimers = new Map();
+  let imageCapture = null;
+  let snapshotFirstFrameAt = 0;
   let logHistory = [];
 
   function log(message) {
@@ -772,6 +774,10 @@
     if (logHistory.length > 40) logHistory.shift();
     debugText.textContent = logHistory.join("\n");
     debugText.scrollTop = debugText.scrollHeight;
+  }
+
+  function resetImageCapture() {
+    imageCapture = null;
   }
 
   function setViewerStatus(title, text) {
@@ -1080,19 +1086,64 @@
 
   function showSnapshotFrame(dataUrl) {
     snapshotFallbackActive = true;
+    snapshotFirstFrameAt = Date.now();
+    clearTimeout(watchTimeout);
+    watchTimeout = null;
     snapshotImg.src = dataUrl;
     snapshotImg.classList.remove("hidden");
+    remoteVideo.pause?.();
+    remoteVideo.srcObject = null;
     remoteVideo.classList.add("hidden");
     localVideo.classList.add("hidden");
     placeholder.classList.add("hidden");
     statusDot.classList.add("live");
-    setViewerStatus("Watching live", "Remote camera connected using backup image mode.");
+    setViewerStatus("Watching live", "Remote camera connected in Safe Image Mode.");
   }
 
   function stopSnapshotForConn(conn) {
     const timer = snapshotTimers.get(conn);
     if (timer) clearInterval(timer);
     snapshotTimers.delete(conn);
+  }
+
+  async function captureCameraFrame(canvas, ctx, maxWidth, quality) {
+    if (!localStream || !ctx) return null;
+
+    const track = localStream.getVideoTracks()[0];
+    if (!track || track.readyState !== "live") return null;
+
+    // Best path: read directly from the camera track. This avoids the common
+    // "connected but black video element" problem on phones and some browsers.
+    if (typeof window.ImageCapture === "function") {
+      try {
+        if (!imageCapture) imageCapture = new ImageCapture(track);
+        const bitmap = await imageCapture.grabFrame();
+        const scale = Math.min(1, maxWidth / bitmap.width);
+        const w = Math.max(2, Math.round(bitmap.width * scale));
+        const h = Math.max(2, Math.round(bitmap.height * scale));
+        if (canvas.width !== w) canvas.width = w;
+        if (canvas.height !== h) canvas.height = h;
+        ctx.drawImage(bitmap, 0, 0, w, h);
+        if (typeof bitmap.close === "function") bitmap.close();
+        return { dataUrl: canvas.toDataURL("image/jpeg", quality), w, h, source: "ImageCapture" };
+      } catch (err) {
+        // Safari may not support ImageCapture. Fall back to the hidden local video.
+        imageCapture = null;
+      }
+    }
+
+    keepLocalCameraWarm();
+    const sourceWidth = localVideo.videoWidth || 0;
+    const sourceHeight = localVideo.videoHeight || 0;
+    if (!sourceWidth || !sourceHeight || localVideo.readyState < 2) return null;
+
+    const scale = Math.min(1, maxWidth / sourceWidth);
+    const w = Math.max(2, Math.round(sourceWidth * scale));
+    const h = Math.max(2, Math.round(sourceHeight * scale));
+    if (canvas.width !== w) canvas.width = w;
+    if (canvas.height !== h) canvas.height = h;
+    ctx.drawImage(localVideo, 0, 0, w, h);
+    return { dataUrl: canvas.toDataURL("image/jpeg", quality), w, h, source: "hidden video" };
   }
 
   function startSnapshotForConn(conn, options = {}) {
@@ -1102,64 +1153,76 @@
 
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d", { alpha: false });
-    const fps = Math.max(1, Math.min(6, Number(options.fps || 3)));
-    const maxWidth = Math.max(320, Math.min(960, Number(options.width || 720)));
+    const fps = Math.max(1, Math.min(5, Number(options.fps || 2)));
+    const maxWidth = Math.max(240, Math.min(720, Number(options.width || 540)));
+    const quality = Math.max(0.35, Math.min(0.72, Number(options.quality || 0.48)));
+    let busy = false;
+    let sent = 0;
 
-    const sendFrame = () => {
+    const sendFrame = async () => {
+      if (busy) return;
+      busy = true;
       try {
         if (!conn.open || !localStream || !ctx) {
           stopSnapshotForConn(conn);
           return;
         }
-        if (conn._dc?.bufferedAmount && conn._dc.bufferedAmount > 1400000) return;
 
-        const source = localVideo;
-        const sourceWidth = source.videoWidth || 0;
-        const sourceHeight = source.videoHeight || 0;
-        if (!sourceWidth || !sourceHeight || source.readyState < 2) {
-          keepLocalCameraWarm();
-          return;
-        }
+        // Avoid building up latency if the data channel is backed up.
+        const bufferedAmount = conn._dc?.bufferedAmount || 0;
+        if (bufferedAmount > 900000) return;
 
-        const scale = Math.min(1, maxWidth / sourceWidth);
-        const w = Math.max(2, Math.round(sourceWidth * scale));
-        const h = Math.max(2, Math.round(sourceHeight * scale));
-        if (canvas.width !== w) canvas.width = w;
-        if (canvas.height !== h) canvas.height = h;
-        ctx.drawImage(source, 0, 0, w, h);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.58);
-        conn.send({ type: "snapshot", data: dataUrl, w, h, ts: Date.now() });
+        const frame = await captureCameraFrame(canvas, ctx, maxWidth, quality);
+        if (!frame) return;
+
+        conn.send({ type: "snapshot", data: frame.dataUrl, w: frame.w, h: frame.h, ts: Date.now(), source: frame.source });
+        sent += 1;
+        if (sent === 1) log(`Safe Image Mode sent first frame to ${conn.peer} from ${frame.source} (${frame.w}×${frame.h}).`);
       } catch (err) {
-        log(`Snapshot fallback failed: ${err.message || err}`);
-        stopSnapshotForConn(conn);
+        log(`Safe Image Mode frame failed: ${err.message || err}`);
+      } finally {
+        busy = false;
       }
     };
 
-    log(`Starting backup image stream to ${conn.peer}.`);
+    log(`Starting Safe Image Mode to ${conn.peer}: ${fps} fps, width ${maxWidth}.`);
     const timer = setInterval(sendFrame, Math.round(1000 / fps));
     snapshotTimers.set(conn, timer);
     sendFrame();
   }
 
-  function requestSnapshotFallback(reason = "video did not render") {
-    if (snapshotFallbackActive) return;
-    log(`Requesting backup image mode: ${reason}`);
-    setViewerStatus("Trying backup view", "Video connected, but the picture was black. Switching to backup image mode…");
+  function requestSnapshotFallback(reason = "safe image mode") {
+    log(`Starting Safe Image Mode: ${reason}`);
+    snapshotFirstFrameAt = 0;
+    setViewerStatus("Connecting…", "Starting Safe Image Mode. This avoids the black WebRTC video screen.");
+    placeholder.classList.remove("hidden");
+    placeholder.innerHTML = `<div><strong>Connecting…</strong>Starting Safe Image Mode.</div>`;
 
-    if (viewerData?.open) {
-      try {
-        viewerData.send({ type: "start-snapshot", fps: 3, width: 720 });
-        return;
-      } catch (err) {
-        log(`Could not request snapshot fallback: ${err.message || err}`);
+    const sendStart = () => {
+      if (viewerData?.open) {
+        try {
+          viewerData.send({ type: "start-snapshot", fps: 2, width: 540, quality: 0.48 });
+          clearTimeout(watchTimeout);
+          watchTimeout = setTimeout(() => {
+            if (!snapshotFirstFrameAt) {
+              log("No Safe Image Mode frame after 10s. Trying normal WebRTC video as last fallback.");
+              setViewerStatus("Trying normal video", "Safe Image Mode did not receive frames. Trying normal WebRTC video as fallback…");
+              startViewerCall();
+            }
+          }, 10000);
+          return true;
+        } catch (err) {
+          log(`Could not request Safe Image Mode: ${err.message || err}`);
+        }
       }
-    }
+      return false;
+    };
+
+    if (sendStart()) return;
 
     connectControlChannel();
     setTimeout(() => {
-      if (viewerData?.open && !snapshotFallbackActive) {
-        try { viewerData.send({ type: "start-snapshot", fps: 3, width: 720 }); } catch {}
-      }
+      if (!snapshotFirstFrameAt) sendStart();
     }, 1200);
   }
 
@@ -1261,6 +1324,7 @@
       await replaceOutgoingVideoTrack(newStream);
       if (localStream) localStream.getTracks().forEach((track) => track.stop());
       localStream = newStream;
+      resetImageCapture();
       activeDeviceId = deviceId || "";
       updateLocalPreview();
       await loadCameras();
@@ -1291,6 +1355,7 @@
     try {
       activeDeviceId = cameraSelect.value || "";
       localStream = await getCameraStream(activeDeviceId);
+      resetImageCapture();
       keepLocalCameraWarm();
 
       if (!activeDeviceId && localStream.getVideoTracks()[0]?.getSettings?.().deviceId) {
@@ -1409,6 +1474,7 @@
     closeStreamerPeer();
     if (stopTracks && localStream) localStream.getTracks().forEach((track) => track.stop());
     localStream = null;
+    resetImageCapture();
     isBroadcasting = false;
     activeDeviceId = "";
     document.body.classList.remove("is-streaming", "preview-on");
@@ -1558,7 +1624,7 @@
       setViewerStatus(remoteStream ? "Watching live" : "Streamer is live", remoteStream ? "Remote camera connected." : "Press Watch to view, or wait for auto-connect.");
 
       try { conn.send({ type: "request-cameras" }); } catch {}
-      if (autoWatch || wantsToWatch) startViewerCall();
+      if (autoWatch || wantsToWatch) requestSnapshotFallback("streamer found");
       schedulePoll(5000);
     });
 
@@ -1698,8 +1764,11 @@
     wantsToWatch = true;
     ensureViewerPeer();
 
-    if (viewerPeer?.open) startViewerCall();
-    else {
+    if (viewerData?.open) requestSnapshotFallback("Watch pressed");
+    else if (viewerPeer?.open) {
+      connectControlChannel();
+      setTimeout(() => { if (viewerData?.open && !snapshotFirstFrameAt) requestSnapshotFallback("Watch pressed after control connected"); }, 900);
+    } else {
       setViewerStatus("Searching…", "Looking for an active streamer…");
       placeholder.classList.remove("hidden");
       placeholder.innerHTML = `<div><strong>Searching…</strong>Will auto-connect when a streamer is found.</div>`;
@@ -1831,7 +1900,7 @@
     loadCameras();
     if (roomLabel) roomLabel.textContent = "○ Searching for streamer…";
     setViewerStatus("Ready", "Searching for a streamer… will auto-connect when one starts.");
-    log(peerReady() ? "UI ready. PeerJS loaded. Black-screen fix active: local camera stays awake + backup image mode." : "UI ready, but PeerJS failed to load.");
+    log(peerReady() ? "UI ready. PeerJS loaded. Safe Image Mode active: sends actual camera frames over data channel first." : "UI ready, but PeerJS failed to load.");
     ensureViewerPeer();
   }
 
