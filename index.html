@@ -109,9 +109,8 @@
       top: 50%;
       width: min(72vw, 860px);
       height: min(72vh, 760px);
-      min-width: 280px;
-      min-height: 300px;
-      resize: both;
+      min-width: 240px;
+      min-height: 260px;
       overflow: hidden;
       display: grid;
       place-items: center;
@@ -123,23 +122,36 @@
       z-index: 2;
       cursor: grab;
       touch-action: none;
+      transform: none;
     }
 
     .clock-shell.dragging {
       cursor: grabbing;
     }
 
-    .clock-shell::after {
+    .clock-resize-handle {
+      position: absolute;
+      right: 8px;
+      bottom: 8px;
+      width: 34px;
+      height: 34px;
+      cursor: nwse-resize;
+      touch-action: none;
+      z-index: 4;
+      border-right: 2px solid rgba(255,255,255,0.34);
+      border-bottom: 2px solid rgba(255,255,255,0.34);
+      border-radius: 0 0 8px 0;
+    }
+
+    .clock-resize-handle::before {
       content: "";
       position: absolute;
-      right: 2px;
-      bottom: 2px;
-      width: 26px;
-      height: 26px;
-      border-right: 2px solid rgba(255,255,255,0.16);
-      border-bottom: 2px solid rgba(255,255,255,0.16);
-      opacity: 0.65;
-      pointer-events: none;
+      right: 8px;
+      bottom: 8px;
+      width: 14px;
+      height: 14px;
+      border-right: 2px solid rgba(255,255,255,0.22);
+      border-bottom: 2px solid rgba(255,255,255,0.22);
     }
 
     .clock {
@@ -494,6 +506,7 @@
       <div class="clock-shell" id="clockShell" title="Drag to move. Drag bottom-right corner to resize.">
         <div class="clock" id="clock">12<br>57</div>
         <div class="seconds" id="seconds">00</div>
+        <div class="clock-resize-handle" id="clockResizeHandle" title="Drag to resize"></div>
       </div>
     </section>
 
@@ -576,6 +589,7 @@
 
     const clock = $("clock");
     const clockShell = $("clockShell");
+    const clockResizeHandle = $("clockResizeHandle");
     const seconds = $("seconds");
     const statusDot = $("statusDot");
     const roomLabel = $("roomLabel");
@@ -611,11 +625,14 @@
     let peerCount = 0;
     let clockDrag = {
       active: false,
+      mode: null,
       pointerId: null,
       startX: 0,
       startY: 0,
-      startLeft: 50,
-      startTop: 50
+      startLeft: 0,
+      startTop: 0,
+      startWidth: 0,
+      startHeight: 0
     };
 
     function isPhoneViewer() {
@@ -645,67 +662,122 @@
       seconds.textContent = s;
     }
 
-    function getClockPosition() {
-      const stage = document.querySelector(".stage");
-      const stageRect = stage.getBoundingClientRect();
-      const clockRect = clockShell.getBoundingClientRect();
-      const left = ((clockRect.left + clockRect.width / 2 - stageRect.left) / stageRect.width) * 100;
-      const top = ((clockRect.top + clockRect.height / 2 - stageRect.top) / stageRect.height) * 100;
-      return { left, top };
+    function getStageRect() {
+      return document.querySelector(".stage").getBoundingClientRect();
     }
 
-    function setClockPosition(left, top) {
-      const safeLeft = Math.min(100, Math.max(0, left));
-      const safeTop = Math.min(100, Math.max(0, top));
-      clockShell.style.left = `${safeLeft}%`;
-      clockShell.style.top = `${safeTop}%`;
-      clockShell.style.transform = "translate(-50%, -50%)";
-      localStorage.setItem("clock-position", JSON.stringify({ left: safeLeft, top: safeTop }));
+    function clampClockBox(left, top, width, height) {
+      const stageRect = getStageRect();
+      const minWidth = Math.min(240, Math.max(140, stageRect.width - 8));
+      const minHeight = Math.min(260, Math.max(160, stageRect.height - 8));
+      const maxWidth = Math.max(minWidth, stageRect.width * 0.98);
+      const maxHeight = Math.max(minHeight, stageRect.height * 0.98);
+
+      const safeWidth = Math.min(maxWidth, Math.max(minWidth, width));
+      const safeHeight = Math.min(maxHeight, Math.max(minHeight, height));
+      const safeLeft = Math.min(Math.max(0, stageRect.width - safeWidth), Math.max(0, left));
+      const safeTop = Math.min(Math.max(0, stageRect.height - safeHeight), Math.max(0, top));
+
+      return { left: safeLeft, top: safeTop, width: safeWidth, height: safeHeight };
+    }
+
+    function setClockBox(left, top, width, height, save = true) {
+      const box = clampClockBox(left, top, width, height);
+      clockShell.style.left = `${box.left}px`;
+      clockShell.style.top = `${box.top}px`;
+      clockShell.style.width = `${box.width}px`;
+      clockShell.style.height = `${box.height}px`;
+      clockShell.style.transform = "none";
+      if (save) localStorage.setItem("clock-box", JSON.stringify(box));
+      return box;
     }
 
     function restoreClockPosition() {
-      try {
-        const saved = JSON.parse(localStorage.getItem("clock-position") || "null");
-        if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
-          setClockPosition(saved.left, saved.top);
-        } else {
-          setClockPosition(50, 50);
+      requestAnimationFrame(() => {
+        const stageRect = getStageRect();
+        const defaultWidth = Math.min(stageRect.width * 0.72, 860);
+        const defaultHeight = Math.min(stageRect.height * 0.72, 760);
+        const defaultBox = {
+          left: (stageRect.width - defaultWidth) / 2,
+          top: (stageRect.height - defaultHeight) / 2,
+          width: defaultWidth,
+          height: defaultHeight
+        };
+
+        try {
+          const saved = JSON.parse(localStorage.getItem("clock-box") || "null");
+          if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top) && Number.isFinite(saved.width) && Number.isFinite(saved.height)) {
+            setClockBox(saved.left, saved.top, saved.width, saved.height);
+          } else {
+            setClockBox(defaultBox.left, defaultBox.top, defaultBox.width, defaultBox.height);
+          }
+        } catch {
+          setClockBox(defaultBox.left, defaultBox.top, defaultBox.width, defaultBox.height);
         }
-      } catch {
-        setClockPosition(50, 50);
-      }
+      });
     }
 
     function enableClockDragging() {
-      clockShell.addEventListener("pointerdown", (e) => {
-        const rect = clockShell.getBoundingClientRect();
-        const isResizeCorner = e.clientX > rect.right - 46 && e.clientY > rect.bottom - 46;
-        if (isResizeCorner) return;
+      const startInteraction = (e, mode) => {
+        if (isPhoneViewer()) return;
+        e.preventDefault();
+        e.stopPropagation();
 
-        const pos = getClockPosition();
+        const shellRect = clockShell.getBoundingClientRect();
+        const stageRect = getStageRect();
+
         clockDrag = {
           active: true,
+          mode,
           pointerId: e.pointerId,
           startX: e.clientX,
           startY: e.clientY,
-          startLeft: pos.left,
-          startTop: pos.top
+          startLeft: shellRect.left - stageRect.left,
+          startTop: shellRect.top - stageRect.top,
+          startWidth: shellRect.width,
+          startHeight: shellRect.height
         };
+
         clockShell.classList.add("dragging");
         clockShell.setPointerCapture(e.pointerId);
+      };
+
+      clockShell.addEventListener("pointerdown", (e) => {
+        if (e.target === clockResizeHandle) return;
+        startInteraction(e, "move");
+      });
+
+      clockResizeHandle.addEventListener("pointerdown", (e) => {
+        startInteraction(e, "resize");
       });
 
       clockShell.addEventListener("pointermove", (e) => {
         if (!clockDrag.active || e.pointerId !== clockDrag.pointerId) return;
-        const stageRect = document.querySelector(".stage").getBoundingClientRect();
-        const nextLeft = clockDrag.startLeft + ((e.clientX - clockDrag.startX) / stageRect.width) * 100;
-        const nextTop = clockDrag.startTop + ((e.clientY - clockDrag.startY) / stageRect.height) * 100;
-        setClockPosition(nextLeft, nextTop);
+
+        const dx = e.clientX - clockDrag.startX;
+        const dy = e.clientY - clockDrag.startY;
+
+        if (clockDrag.mode === "resize") {
+          setClockBox(
+            clockDrag.startLeft,
+            clockDrag.startTop,
+            clockDrag.startWidth + dx,
+            clockDrag.startHeight + dy
+          );
+        } else {
+          setClockBox(
+            clockDrag.startLeft + dx,
+            clockDrag.startTop + dy,
+            clockDrag.startWidth,
+            clockDrag.startHeight
+          );
+        }
       });
 
       const endDrag = (e) => {
         if (!clockDrag.active || e.pointerId !== clockDrag.pointerId) return;
         clockDrag.active = false;
+        clockDrag.mode = null;
         clockShell.classList.remove("dragging");
       };
 
@@ -944,7 +1016,14 @@
       joinCurrentRoom();
     });
 
-    window.addEventListener("resize", applyDeviceMode);
+    window.addEventListener("resize", () => {
+      applyDeviceMode();
+      if (!isPhoneViewer()) {
+        const shellRect = clockShell.getBoundingClientRect();
+        const stageRect = getStageRect();
+        setClockBox(shellRect.left - stageRect.left, shellRect.top - stageRect.top, shellRect.width, shellRect.height);
+      }
+    });
     window.addEventListener("orientationchange", () => setTimeout(applyDeviceMode, 250));
 
     applyDeviceMode();
