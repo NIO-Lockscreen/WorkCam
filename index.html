@@ -11,14 +11,12 @@
 
   <style>
     :root {
-      --clock-size: clamp(7rem, 23vw, 23rem);
       --clock-font: "Poiret One";
-      --glass: rgba(255, 255, 255, 0.10);
-      --glass-strong: rgba(255, 255, 255, 0.18);
+      --clock-size: clamp(8rem, 22vw, 22rem);
       --text: rgba(244, 246, 255, 0.94);
       --muted: rgba(244, 246, 255, 0.62);
-      --line: rgba(255, 255, 255, 0.18);
-      --shadow: 0 30px 90px rgba(0, 0, 0, 0.40);
+      --line: rgba(255, 255, 255, 0.16);
+      --shadow: 0 30px 90px rgba(0, 0, 0, 0.42);
       --radius: 38px;
     }
 
@@ -40,7 +38,7 @@
       position: fixed;
       inset: -18%;
       background:
-        radial-gradient(circle at 18% 18%, rgba(128, 151, 255, 0.26), transparent 30%),
+        radial-gradient(circle at 18% 18%, rgba(128, 151, 255, 0.27), transparent 30%),
         radial-gradient(circle at 76% 20%, rgba(188, 119, 255, 0.20), transparent 28%),
         radial-gradient(circle at 62% 78%, rgba(91, 207, 255, 0.17), transparent 34%),
         linear-gradient(135deg, #03040b 0%, #101322 48%, #050711 100%);
@@ -79,8 +77,6 @@
       position: relative;
       min-width: 0;
       min-height: 0;
-      display: grid;
-      place-items: center;
       border-radius: var(--radius);
       overflow: hidden;
       background: linear-gradient(145deg, rgba(255,255,255,0.11), rgba(255,255,255,0.035));
@@ -92,8 +88,12 @@
     .stage::before {
       content: "";
       position: absolute;
+      left: 50%;
+      top: 50%;
       width: 70vmin;
       height: 70vmin;
+      margin-left: -35vmin;
+      margin-top: -35vmin;
       border-radius: 999px;
       background: conic-gradient(from 180deg, rgba(255,255,255,0.0), rgba(255,255,255,0.13), rgba(123,154,255,0.02), rgba(255,255,255,0.0));
       filter: blur(8px);
@@ -105,54 +105,25 @@
 
     .clock-shell {
       position: absolute;
-      left: 50%;
-      top: 50%;
-      width: min(72vw, 860px);
-      height: min(72vh, 760px);
-      min-width: 240px;
-      min-height: 260px;
-      overflow: hidden;
+      left: 80px;
+      top: 80px;
+      width: 560px;
+      height: 520px;
+      min-width: 220px;
+      min-height: 230px;
       display: grid;
       place-items: center;
-      padding: clamp(24px, 4vw, 72px);
-      border-radius: 42px;
+      padding: clamp(18px, 4vw, 72px);
       background: transparent;
-      box-shadow: none;
       border: 0;
+      box-shadow: none;
       z-index: 2;
       cursor: grab;
       touch-action: none;
-      transform: none;
+      overflow: visible;
     }
 
-    .clock-shell.dragging {
-      cursor: grabbing;
-    }
-
-    .clock-resize-handle {
-      position: absolute;
-      right: 8px;
-      bottom: 8px;
-      width: 34px;
-      height: 34px;
-      cursor: nwse-resize;
-      touch-action: none;
-      z-index: 4;
-      border-right: 2px solid rgba(255,255,255,0.34);
-      border-bottom: 2px solid rgba(255,255,255,0.34);
-      border-radius: 0 0 8px 0;
-    }
-
-    .clock-resize-handle::before {
-      content: "";
-      position: absolute;
-      right: 8px;
-      bottom: 8px;
-      width: 14px;
-      height: 14px;
-      border-right: 2px solid rgba(255,255,255,0.22);
-      border-bottom: 2px solid rgba(255,255,255,0.22);
-    }
+    .clock-shell.dragging { cursor: grabbing; }
 
     .clock {
       font-family: var(--clock-font), ui-sans-serif, system-ui;
@@ -163,18 +134,45 @@
       text-align: center;
       text-shadow: 0 8px 35px rgba(163,177,255,0.34), 0 1px 0 rgba(255,255,255,0.24);
       transform: translateX(-0.035em);
+      pointer-events: none;
     }
 
     .seconds {
       position: absolute;
-      bottom: clamp(38px, 6vh, 78px);
       left: 0;
       right: 0;
+      bottom: 18px;
       text-align: center;
       font-family: "Major Mono Display", monospace;
       font-size: clamp(0.85rem, 2vw, 1.6rem);
       color: var(--muted);
       letter-spacing: 0.22em;
+      pointer-events: none;
+    }
+
+    .clock-resize-handle {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: 46px;
+      height: 46px;
+      cursor: nwse-resize;
+      touch-action: none;
+      z-index: 5;
+      border-right: 3px solid rgba(255,255,255,0.36);
+      border-bottom: 3px solid rgba(255,255,255,0.36);
+      border-radius: 0 0 10px 0;
+    }
+
+    .clock-resize-handle::before {
+      content: "";
+      position: absolute;
+      right: 11px;
+      bottom: 11px;
+      width: 16px;
+      height: 16px;
+      border-right: 2px solid rgba(255,255,255,0.22);
+      border-bottom: 2px solid rgba(255,255,255,0.22);
     }
 
     .topbar {
@@ -195,7 +193,7 @@
       align-items: center;
       gap: 10px;
       border: 1px solid var(--line);
-      background: rgba(8, 10, 20, 0.38);
+      background: rgba(8, 10, 20, 0.42);
       backdrop-filter: blur(18px);
       color: var(--text);
       border-radius: 999px;
@@ -342,7 +340,7 @@
       display: none;
       border-radius: 28px;
       border: 1px solid var(--line);
-      background: rgba(7, 9, 18, 0.82);
+      background: rgba(7, 9, 18, 0.88);
       backdrop-filter: blur(26px) saturate(135%);
       box-shadow: 0 35px 100px rgba(0,0,0,0.45);
       padding: 18px;
@@ -391,7 +389,6 @@
       }
       .topbar { left: 18px; right: 18px; top: 14px; }
       .room-pill { display: none; }
-      .clock-shell { width: 86vw; height: 58vh; }
       .side { min-height: 430px; }
     }
 
@@ -401,16 +398,12 @@
     }
 
     body.phone-viewer::before,
-    body.phone-viewer::after {
-      display: none;
-    }
+    body.phone-viewer::after { display: none; }
 
     body.phone-viewer .topbar,
     body.phone-viewer .stage,
     body.phone-viewer .panel,
-    body.phone-viewer .side > div:first-child {
-      display: none !important;
-    }
+    body.phone-viewer .side > div:first-child { display: none !important; }
 
     body.phone-viewer .app {
       width: 100vw;
@@ -469,15 +462,8 @@
       backdrop-filter: blur(16px);
     }
 
-    body.phone-viewer .btn {
-      padding: 12px 14px;
-      font-size: 0.9rem;
-    }
-
-    body.phone-viewer .video-placeholder {
-      color: rgba(255,255,255,0.68);
-      padding-bottom: 110px;
-    }
+    body.phone-viewer .btn { padding: 12px 14px; font-size: 0.9rem; }
+    body.phone-viewer .video-placeholder { color: rgba(255,255,255,0.68); padding-bottom: 110px; }
 
     @media (orientation: landscape) and (max-height: 520px) {
       body.phone-viewer .actions {
@@ -493,16 +479,16 @@
 </head>
 <body>
   <div class="topbar">
-    <div class="pill room-pill" id="roomLabel">Room: loading…</div>
+    <div class="pill room-pill" id="roomLabel">Room: starting…</div>
     <div class="pill">
       <span class="status-dot" id="statusDot"></span>
-      <button class="btn small" id="cameraBtn">Camera</button>
-      <button class="btn small" id="configBtn">Config</button>
+      <button class="btn small" id="cameraBtn" type="button">Camera</button>
+      <button class="btn small" id="configBtn" type="button">Config</button>
     </div>
   </div>
 
   <main class="app">
-    <section class="stage" aria-label="Clock display">
+    <section class="stage" id="stage" aria-label="Clock display">
       <div class="clock-shell" id="clockShell" title="Drag to move. Drag bottom-right corner to resize.">
         <div class="clock" id="clock">12<br>57</div>
         <div class="seconds" id="seconds">00</div>
@@ -513,7 +499,7 @@
     <aside class="side">
       <div>
         <h1>Live View</h1>
-        <p id="connectionText">Join the same URL on another device. When someone starts camera mode, the live feed appears here.</p>
+        <p id="connectionText">Open the same room link on another device. Camera works locally even if sharing/signalling is unavailable.</p>
       </div>
 
       <div class="video-card" id="videoCard">
@@ -528,10 +514,10 @@
       </div>
 
       <div class="actions">
-        <button class="btn primary" id="startBtn">Start</button>
-        <button class="btn" id="watchBtn">Watch</button>
-        <button class="btn" id="fullscreenBtn">Fullscreen</button>
-        <button class="btn danger hidden" id="stopBtn">Stop</button>
+        <button class="btn primary" id="startBtn" type="button">Start</button>
+        <button class="btn" id="watchBtn" type="button">Watch</button>
+        <button class="btn" id="fullscreenBtn" type="button">Fullscreen</button>
+        <button class="btn danger hidden" id="stopBtn" type="button">Stop</button>
       </div>
     </aside>
   </main>
@@ -573,464 +559,463 @@
     </label>
 
     <div class="actions">
-      <button class="btn primary" id="applyRoomBtn">Apply room</button>
-      <button class="btn" id="copyLinkBtn">Copy room link</button>
+      <button class="btn primary" id="applyRoomBtn" type="button">Apply room</button>
+      <button class="btn" id="copyLinkBtn" type="button">Copy room link</button>
+      <button class="btn" id="resetClockBtn" type="button">Reset clock</button>
     </div>
 
-    <div class="fineprint">
-      Camera sharing uses WebRTC peer-to-peer. This single HTML file uses public Trystero signalling so you do not need your own backend. The browser still requires camera permission before anything can be sent.
+    <div class="fineprint" id="debugText">
+      UI ready. Camera requires HTTPS or localhost. Sharing will connect after the signalling library loads.
     </div>
   </section>
 
-  <script type="module">
-    import { joinRoom } from "https://esm.sh/trystero/torrent@0.21.0";
+  <script>
+    (() => {
+      "use strict";
 
-    const $ = (id) => document.getElementById(id);
+      const $ = (id) => document.getElementById(id);
 
-    const clock = $("clock");
-    const clockShell = $("clockShell");
-    const clockResizeHandle = $("clockResizeHandle");
-    const seconds = $("seconds");
-    const statusDot = $("statusDot");
-    const roomLabel = $("roomLabel");
-    const cameraBtn = $("cameraBtn");
-    const configBtn = $("configBtn");
-    const panel = $("panel");
-    const startBtn = $("startBtn");
-    const stopBtn = $("stopBtn");
-    const watchBtn = $("watchBtn");
-    const fullscreenBtn = $("fullscreenBtn");
-    const localVideo = $("localVideo");
-    const remoteVideo = $("remoteVideo");
-    const placeholder = $("placeholder");
-    const videoCard = $("videoCard");
-    const connectionText = $("connectionText");
-    const roomInput = $("roomInput");
-    const cameraSelect = $("cameraSelect");
-    const sizeSlider = $("sizeSlider");
-    const fontSelect = $("fontSelect");
-    const moodSelect = $("moodSelect");
-    const applyRoomBtn = $("applyRoomBtn");
-    const copyLinkBtn = $("copyLinkBtn");
+      const stage = $("stage");
+      const clock = $("clock");
+      const clockShell = $("clockShell");
+      const clockResizeHandle = $("clockResizeHandle");
+      const seconds = $("seconds");
+      const statusDot = $("statusDot");
+      const roomLabel = $("roomLabel");
+      const cameraBtn = $("cameraBtn");
+      const configBtn = $("configBtn");
+      const panel = $("panel");
+      const startBtn = $("startBtn");
+      const stopBtn = $("stopBtn");
+      const watchBtn = $("watchBtn");
+      const fullscreenBtn = $("fullscreenBtn");
+      const localVideo = $("localVideo");
+      const remoteVideo = $("remoteVideo");
+      const placeholder = $("placeholder");
+      const videoCard = $("videoCard");
+      const connectionText = $("connectionText");
+      const roomInput = $("roomInput");
+      const cameraSelect = $("cameraSelect");
+      const sizeSlider = $("sizeSlider");
+      const fontSelect = $("fontSelect");
+      const moodSelect = $("moodSelect");
+      const applyRoomBtn = $("applyRoomBtn");
+      const copyLinkBtn = $("copyLinkBtn");
+      const resetClockBtn = $("resetClockBtn");
+      const debugText = $("debugText");
 
-    const APP_ID = "thomas-always-on-clock-camera-v2";
-    let room;
-    let sendState;
-    let getState;
-    let currentRoomId = getRoomId();
-    let localStream = null;
-    let remoteStream = null;
-    let isBroadcasting = false;
-    let wantsToWatch = false;
-    let peerCount = 0;
-    let clockDrag = {
-      active: false,
-      mode: null,
-      pointerId: null,
-      startX: 0,
-      startY: 0,
-      startLeft: 0,
-      startTop: 0,
-      startWidth: 0,
-      startHeight: 0
-    };
+      const APP_ID = "thomas-always-on-clock-camera-v3";
+      let roomId = getRoomId();
+      let room = null;
+      let sendState = null;
+      let localStream = null;
+      let remoteStream = null;
+      let isBroadcasting = false;
+      let wantsToWatch = false;
+      let peerCount = 0;
+      let drag = null;
 
-    function isPhoneViewer() {
-      return window.matchMedia("(max-width: 760px) and (pointer: coarse)").matches;
-    }
+      function log(message) {
+        console.log(`[clock-camera] ${message}`);
+        if (debugText) debugText.textContent = message;
+      }
 
-    function applyDeviceMode() {
-      document.body.classList.toggle("phone-viewer", isPhoneViewer());
-    }
+      function isPhoneViewer() {
+        return window.matchMedia("(max-width: 760px) and (pointer: coarse)").matches;
+      }
 
-    function getRoomId() {
-      const hash = decodeURIComponent(location.hash.replace(/^#/, "")).trim();
-      const saved = localStorage.getItem("clock-camera-room");
-      return hash || saved || "home-clock";
-    }
+      function applyDeviceMode() {
+        document.body.classList.toggle("phone-viewer", isPhoneViewer());
+      }
 
-    function setRoomHash(roomId) {
-      history.replaceState(null, "", `${location.pathname}${location.search}#${encodeURIComponent(roomId)}`);
-    }
+      function getRoomId() {
+        const hash = decodeURIComponent(location.hash.replace(/^#/, "")).trim();
+        const saved = localStorage.getItem("clock-camera-room");
+        return hash || saved || "home-clock";
+      }
 
-    function updateClock() {
-      const now = new Date();
-      const h = String(now.getHours()).padStart(2, "0");
-      const m = String(now.getMinutes()).padStart(2, "0");
-      const s = String(now.getSeconds()).padStart(2, "0");
-      clock.innerHTML = `${h}<br>${m}`;
-      seconds.textContent = s;
-    }
+      function setRoom(roomName) {
+        roomId = (roomName || "home-clock").trim() || "home-clock";
+        localStorage.setItem("clock-camera-room", roomId);
+        history.replaceState(null, "", `${location.pathname}${location.search}#${encodeURIComponent(roomId)}`);
+        roomInput.value = roomId;
+        roomLabel.textContent = `Room: ${roomId}`;
+      }
 
-    function getStageRect() {
-      return document.querySelector(".stage").getBoundingClientRect();
-    }
+      function updateClock() {
+        const now = new Date();
+        const h = String(now.getHours()).padStart(2, "0");
+        const m = String(now.getMinutes()).padStart(2, "0");
+        const s = String(now.getSeconds()).padStart(2, "0");
+        clock.innerHTML = `${h}<br>${m}`;
+        seconds.textContent = s;
+      }
 
-    function clampClockBox(left, top, width, height) {
-      const stageRect = getStageRect();
-      const minWidth = Math.min(240, Math.max(140, stageRect.width - 8));
-      const minHeight = Math.min(260, Math.max(160, stageRect.height - 8));
-      const maxWidth = Math.max(minWidth, stageRect.width * 0.98);
-      const maxHeight = Math.max(minHeight, stageRect.height * 0.98);
+      function clampBox(left, top, width, height) {
+        const stageRect = stage.getBoundingClientRect();
+        const minWidth = Math.min(220, Math.max(120, stageRect.width - 8));
+        const minHeight = Math.min(230, Math.max(140, stageRect.height - 8));
+        const maxWidth = Math.max(minWidth, stageRect.width - 8);
+        const maxHeight = Math.max(minHeight, stageRect.height - 8);
+        const safeWidth = Math.min(maxWidth, Math.max(minWidth, width));
+        const safeHeight = Math.min(maxHeight, Math.max(minHeight, height));
+        const safeLeft = Math.min(Math.max(0, stageRect.width - safeWidth), Math.max(0, left));
+        const safeTop = Math.min(Math.max(0, stageRect.height - safeHeight), Math.max(0, top));
+        return { left: safeLeft, top: safeTop, width: safeWidth, height: safeHeight };
+      }
 
-      const safeWidth = Math.min(maxWidth, Math.max(minWidth, width));
-      const safeHeight = Math.min(maxHeight, Math.max(minHeight, height));
-      const safeLeft = Math.min(Math.max(0, stageRect.width - safeWidth), Math.max(0, left));
-      const safeTop = Math.min(Math.max(0, stageRect.height - safeHeight), Math.max(0, top));
+      function setClockBox(left, top, width, height, save = true) {
+        const box = clampBox(left, top, width, height);
+        clockShell.style.left = `${box.left}px`;
+        clockShell.style.top = `${box.top}px`;
+        clockShell.style.width = `${box.width}px`;
+        clockShell.style.height = `${box.height}px`;
+        if (save) localStorage.setItem("clock-box-v3", JSON.stringify(box));
+        return box;
+      }
 
-      return { left: safeLeft, top: safeTop, width: safeWidth, height: safeHeight };
-    }
+      function resetClockBox() {
+        const stageRect = stage.getBoundingClientRect();
+        const width = Math.min(760, Math.max(320, stageRect.width * 0.68));
+        const height = Math.min(680, Math.max(320, stageRect.height * 0.68));
+        setClockBox((stageRect.width - width) / 2, (stageRect.height - height) / 2, width, height);
+      }
 
-    function setClockBox(left, top, width, height, save = true) {
-      const box = clampClockBox(left, top, width, height);
-      clockShell.style.left = `${box.left}px`;
-      clockShell.style.top = `${box.top}px`;
-      clockShell.style.width = `${box.width}px`;
-      clockShell.style.height = `${box.height}px`;
-      clockShell.style.transform = "none";
-      if (save) localStorage.setItem("clock-box", JSON.stringify(box));
-      return box;
-    }
+      function restoreClockBox() {
+        requestAnimationFrame(() => {
+          try {
+            const saved = JSON.parse(localStorage.getItem("clock-box-v3") || "null");
+            if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top) && Number.isFinite(saved.width) && Number.isFinite(saved.height)) {
+              setClockBox(saved.left, saved.top, saved.width, saved.height);
+              return;
+            }
+          } catch {}
+          resetClockBox();
+        });
+      }
 
-    function restoreClockPosition() {
-      requestAnimationFrame(() => {
-        const stageRect = getStageRect();
-        const defaultWidth = Math.min(stageRect.width * 0.72, 860);
-        const defaultHeight = Math.min(stageRect.height * 0.72, 760);
-        const defaultBox = {
-          left: (stageRect.width - defaultWidth) / 2,
-          top: (stageRect.height - defaultHeight) / 2,
-          width: defaultWidth,
-          height: defaultHeight
-        };
+      function enableClockMoveAndResize() {
+        function begin(e, mode) {
+          if (isPhoneViewer()) return;
+          e.preventDefault();
+          e.stopPropagation();
+
+          const shellRect = clockShell.getBoundingClientRect();
+          const stageRect = stage.getBoundingClientRect();
+          drag = {
+            mode,
+            id: e.pointerId,
+            startX: e.clientX,
+            startY: e.clientY,
+            left: shellRect.left - stageRect.left,
+            top: shellRect.top - stageRect.top,
+            width: shellRect.width,
+            height: shellRect.height
+          };
+
+          clockShell.classList.add("dragging");
+          clockShell.setPointerCapture(e.pointerId);
+        }
+
+        clockShell.addEventListener("pointerdown", (e) => begin(e, "move"));
+        clockResizeHandle.addEventListener("pointerdown", (e) => begin(e, "resize"));
+
+        clockShell.addEventListener("pointermove", (e) => {
+          if (!drag || drag.id !== e.pointerId) return;
+          e.preventDefault();
+          const dx = e.clientX - drag.startX;
+          const dy = e.clientY - drag.startY;
+
+          if (drag.mode === "resize") {
+            setClockBox(drag.left, drag.top, drag.width + dx, drag.height + dy);
+          } else {
+            setClockBox(drag.left + dx, drag.top + dy, drag.width, drag.height);
+          }
+        });
+
+        function end(e) {
+          if (!drag || drag.id !== e.pointerId) return;
+          drag = null;
+          clockShell.classList.remove("dragging");
+        }
+
+        clockShell.addEventListener("pointerup", end);
+        clockShell.addEventListener("pointercancel", end);
+      }
+
+      async function loadCameras() {
+        cameraSelect.innerHTML = `<option value="">Default camera</option>`;
+        try {
+          if (!navigator.mediaDevices?.enumerateDevices) return;
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          devices.filter((d) => d.kind === "videoinput").forEach((camera, index) => {
+            const option = document.createElement("option");
+            option.value = camera.deviceId;
+            option.textContent = camera.label || `Camera ${index + 1}`;
+            cameraSelect.appendChild(option);
+          });
+        } catch (err) {
+          log(`Camera list unavailable: ${err.message}`);
+        }
+      }
+
+      async function startCamera() {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          alert("This browser does not support camera access. Use HTTPS, localhost, Chrome, Edge, Safari, or Firefox.");
+          return;
+        }
+
+        stopCamera(false);
+        const deviceId = cameraSelect.value;
+        const video = deviceId
+          ? { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+          : { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } };
 
         try {
-          const saved = JSON.parse(localStorage.getItem("clock-box") || "null");
-          if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top) && Number.isFinite(saved.width) && Number.isFinite(saved.height)) {
-            setClockBox(saved.left, saved.top, saved.width, saved.height);
-          } else {
-            setClockBox(defaultBox.left, defaultBox.top, defaultBox.width, defaultBox.height);
+          localStream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
+          localVideo.srcObject = localStream;
+          localVideo.classList.remove("hidden");
+          remoteVideo.classList.add("hidden");
+          placeholder.classList.add("hidden");
+          startBtn.classList.add("hidden");
+          stopBtn.classList.remove("hidden");
+          statusDot.classList.add("live");
+          isBroadcasting = true;
+          log("Camera started.");
+
+          try {
+            room?.addStream?.(localStream);
+            sendState?.({ type: "live", live: true, at: Date.now() });
+          } catch (err) {
+            log(`Camera started locally. Sharing not connected: ${err.message}`);
           }
-        } catch {
-          setClockBox(defaultBox.left, defaultBox.top, defaultBox.width, defaultBox.height);
+
+          await loadCameras();
+        } catch (err) {
+          alert(`Could not start camera: ${err.message}`);
+          log(`Camera error: ${err.message}`);
         }
-      });
-    }
-
-    function enableClockDragging() {
-      const startInteraction = (e, mode) => {
-        if (isPhoneViewer()) return;
-        e.preventDefault();
-        e.stopPropagation();
-
-        const shellRect = clockShell.getBoundingClientRect();
-        const stageRect = getStageRect();
-
-        clockDrag = {
-          active: true,
-          mode,
-          pointerId: e.pointerId,
-          startX: e.clientX,
-          startY: e.clientY,
-          startLeft: shellRect.left - stageRect.left,
-          startTop: shellRect.top - stageRect.top,
-          startWidth: shellRect.width,
-          startHeight: shellRect.height
-        };
-
-        clockShell.classList.add("dragging");
-        clockShell.setPointerCapture(e.pointerId);
-      };
-
-      clockShell.addEventListener("pointerdown", (e) => {
-        if (e.target === clockResizeHandle) return;
-        startInteraction(e, "move");
-      });
-
-      clockResizeHandle.addEventListener("pointerdown", (e) => {
-        startInteraction(e, "resize");
-      });
-
-      clockShell.addEventListener("pointermove", (e) => {
-        if (!clockDrag.active || e.pointerId !== clockDrag.pointerId) return;
-
-        const dx = e.clientX - clockDrag.startX;
-        const dy = e.clientY - clockDrag.startY;
-
-        if (clockDrag.mode === "resize") {
-          setClockBox(
-            clockDrag.startLeft,
-            clockDrag.startTop,
-            clockDrag.startWidth + dx,
-            clockDrag.startHeight + dy
-          );
-        } else {
-          setClockBox(
-            clockDrag.startLeft + dx,
-            clockDrag.startTop + dy,
-            clockDrag.startWidth,
-            clockDrag.startHeight
-          );
-        }
-      });
-
-      const endDrag = (e) => {
-        if (!clockDrag.active || e.pointerId !== clockDrag.pointerId) return;
-        clockDrag.active = false;
-        clockDrag.mode = null;
-        clockShell.classList.remove("dragging");
-      };
-
-      clockShell.addEventListener("pointerup", endDrag);
-      clockShell.addEventListener("pointercancel", endDrag);
-    }
-
-    setInterval(updateClock, 250);
-    updateClock();
-
-    function joinCurrentRoom() {
-      if (room) room.leave();
-      currentRoomId = getRoomId();
-      localStorage.setItem("clock-camera-room", currentRoomId);
-      setRoomHash(currentRoomId);
-      roomInput.value = currentRoomId;
-      roomLabel.textContent = `Room: ${location.href}`;
-
-      room = joinRoom({ appId: APP_ID }, currentRoomId);
-      [sendState, getState] = room.makeAction("state");
-
-      room.onPeerJoin(() => {
-        peerCount += 1;
-        connectionText.textContent = `${peerCount} other user${peerCount === 1 ? "" : "s"} in this room.`;
-        if (isBroadcasting) sendState({ type: "live", live: true, at: Date.now() });
-      });
-
-      room.onPeerLeave(() => {
-        peerCount = Math.max(0, peerCount - 1);
-        connectionText.textContent = peerCount ? `${peerCount} other user${peerCount === 1 ? "" : "s"} in this room.` : "Join the same URL on another device. When someone starts camera mode, the live feed appears here.";
-      });
-
-      getState((data) => {
-        if (!data || data.type !== "live") return;
-        statusDot.classList.toggle("live", !!data.live);
-        if (data.live && !isBroadcasting) {
-          placeholder.innerHTML = `<div><strong>Live feed available</strong>Press “Watch” to view it.</div>`;
-        }
-      });
-
-      room.onPeerStream((stream) => {
-        remoteStream = stream;
-        statusDot.classList.add("live");
-        if (wantsToWatch) showRemoteStream();
-        else placeholder.innerHTML = `<div><strong>Live feed available</strong>Press “Watch” to view it.</div>`;
-      });
-    }
-
-    async function loadCameras() {
-      cameraSelect.innerHTML = `<option value="">Default camera</option>`;
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const cameras = devices.filter((d) => d.kind === "videoinput");
-        cameras.forEach((camera, index) => {
-          const option = document.createElement("option");
-          option.value = camera.deviceId;
-          option.textContent = camera.label || `Camera ${index + 1}`;
-          cameraSelect.appendChild(option);
-        });
-      } catch {
-        cameraSelect.innerHTML = `<option value="">Camera list unavailable</option>`;
-      }
-    }
-
-    async function startCamera() {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        alert("This browser does not support camera access. Use Chrome, Edge, Safari, or Firefox over HTTPS.");
-        return;
       }
 
-      stopCamera(false);
+      function stopCamera(sendUpdate = true) {
+        if (localStream) {
+          try { room?.removeStream?.(localStream); } catch {}
+          localStream.getTracks().forEach((track) => track.stop());
+        }
+        localStream = null;
+        isBroadcasting = false;
+        localVideo.srcObject = null;
+        localVideo.classList.add("hidden");
+        startBtn.classList.remove("hidden");
+        stopBtn.classList.add("hidden");
+        statusDot.classList.toggle("live", !!remoteStream);
 
-      const deviceId = cameraSelect.value;
-      const constraints = {
-        video: deviceId ? { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: { ideal: "environment" } } : { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: { ideal: "environment" } },
-        audio: false
-      };
+        if (!remoteStream) {
+          placeholder.classList.remove("hidden");
+          placeholder.innerHTML = `<div><strong>No live feed yet</strong>Start your camera or wait for another user in this room.</div>`;
+        }
 
-      try {
-        localStream = await navigator.mediaDevices.getUserMedia(constraints);
-        localVideo.srcObject = localStream;
-        localVideo.classList.remove("hidden");
-        remoteVideo.classList.add("hidden");
+        if (sendUpdate) sendState?.({ type: "live", live: false, at: Date.now() });
+      }
+
+      function showRemoteStream() {
+        wantsToWatch = true;
+        if (!remoteStream) {
+          placeholder.classList.remove("hidden");
+          placeholder.innerHTML = `<div><strong>No feed received yet</strong>Keep this page open while the broadcaster starts camera mode.</div>`;
+          log("Waiting for remote feed.");
+          return;
+        }
+        remoteVideo.srcObject = remoteStream;
+        remoteVideo.classList.remove("hidden");
+        localVideo.classList.add("hidden");
         placeholder.classList.add("hidden");
-        startBtn.classList.add("hidden");
-        stopBtn.classList.remove("hidden");
-        statusDot.classList.add("live");
-        isBroadcasting = true;
-
-        room.addStream(localStream);
-        sendState({ type: "live", live: true, at: Date.now() });
-        await loadCameras();
-      } catch (err) {
-        console.error(err);
-        alert("Could not start camera. Check browser permission and make sure the page is served over HTTPS.");
-      }
-    }
-
-    function stopCamera(sendUpdate = true) {
-      if (localStream) {
-        try { room?.removeStream?.(localStream); } catch {}
-        localStream.getTracks().forEach((track) => track.stop());
-      }
-      localStream = null;
-      isBroadcasting = false;
-      localVideo.srcObject = null;
-      localVideo.classList.add("hidden");
-      startBtn.classList.remove("hidden");
-      stopBtn.classList.add("hidden");
-      statusDot.classList.toggle("live", !!remoteStream);
-
-      if (!remoteStream) {
-        placeholder.classList.remove("hidden");
-        placeholder.innerHTML = `<div><strong>No live feed yet</strong>Start your camera or wait for another user in this room.</div>`;
+        remoteVideo.play().catch(() => {});
+        log("Watching remote feed.");
       }
 
-      if (sendUpdate) sendState?.({ type: "live", live: false, at: Date.now() });
-    }
-
-    function showRemoteStream() {
-      wantsToWatch = true;
-      if (!remoteStream) {
-        placeholder.classList.remove("hidden");
-        placeholder.innerHTML = `<div><strong>No feed received yet</strong>Keep this page open while the broadcaster starts camera mode.</div>`;
-        return;
-      }
-      remoteVideo.srcObject = remoteStream;
-      remoteVideo.classList.remove("hidden");
-      localVideo.classList.add("hidden");
-      placeholder.classList.add("hidden");
-      remoteVideo.play().catch(() => {});
-    }
-
-    function getActiveVideo() {
-      if (!localVideo.classList.contains("hidden")) return localVideo;
-      if (!remoteVideo.classList.contains("hidden")) return remoteVideo;
-      if (remoteStream) {
-        showRemoteStream();
-        return remoteVideo;
-      }
-      if (localStream) return localVideo;
-      return null;
-    }
-
-    async function openFullscreenCamera() {
-      const activeVideo = getActiveVideo();
-      if (!activeVideo) {
-        alert("Start or watch a camera feed first.");
-        return;
+      function getActiveVideo() {
+        if (!localVideo.classList.contains("hidden")) return localVideo;
+        if (!remoteVideo.classList.contains("hidden")) return remoteVideo;
+        if (remoteStream) {
+          showRemoteStream();
+          return remoteVideo;
+        }
+        return null;
       }
 
-      try {
-        await activeVideo.play().catch(() => {});
-
-        if (videoCard.requestFullscreen) {
-          await videoCard.requestFullscreen({ navigationUI: "hide" });
-        } else if (activeVideo.webkitEnterFullscreen) {
-          activeVideo.webkitEnterFullscreen();
+      async function openFullscreenCamera() {
+        const activeVideo = getActiveVideo();
+        if (!activeVideo) {
+          alert("Start or watch a camera feed first.");
+          return;
         }
 
-        if (isPhoneViewer() && screen.orientation?.lock) {
-          await screen.orientation.lock("landscape").catch(() => {});
+        try {
+          await activeVideo.play().catch(() => {});
+          if (videoCard.requestFullscreen) {
+            await videoCard.requestFullscreen({ navigationUI: "hide" });
+          } else if (activeVideo.webkitEnterFullscreen) {
+            activeVideo.webkitEnterFullscreen();
+          }
+          if (isPhoneViewer() && screen.orientation?.lock) {
+            await screen.orientation.lock("landscape").catch(() => {});
+          }
+        } catch (err) {
+          alert(`Fullscreen blocked: ${err.message}`);
         }
-      } catch (err) {
-        console.error(err);
-        alert("Fullscreen was blocked. Press the Fullscreen button again after the video has started.");
       }
-    }
 
-    function applyMood(mood) {
-      const root = document.documentElement;
-      if (mood === "midnight") {
-        document.body.style.setProperty("background", "#03040a");
-        root.style.setProperty("--glass", "rgba(255,255,255,0.08)");
-      } else if (mood === "warm") {
-        document.body.style.setProperty("background", "#120907");
-        root.style.setProperty("--glass", "rgba(255,236,214,0.11)");
+      async function connectSharing() {
+        setRoom(roomId);
+        connectionText.textContent = "Camera and UI ready. Loading sharing/signalling…";
+
+        try {
+          const mod = await import("https://esm.sh/trystero/torrent@0.21.0");
+          const joinRoom = mod.joinRoom;
+          if (typeof joinRoom !== "function") throw new Error("joinRoom not found");
+
+          if (room?.leave) room.leave();
+          room = joinRoom({ appId: APP_ID }, roomId);
+          const actions = room.makeAction("state");
+          sendState = actions[0];
+          const getState = actions[1];
+
+          room.onPeerJoin(() => {
+            peerCount += 1;
+            connectionText.textContent = `${peerCount} other user${peerCount === 1 ? "" : "s"} in this room.`;
+            if (isBroadcasting) sendState?.({ type: "live", live: true, at: Date.now() });
+          });
+
+          room.onPeerLeave(() => {
+            peerCount = Math.max(0, peerCount - 1);
+            connectionText.textContent = peerCount ? `${peerCount} other user${peerCount === 1 ? "" : "s"} in this room.` : "Sharing ready. Open the same room link on another device.";
+          });
+
+          getState((data) => {
+            if (!data || data.type !== "live") return;
+            statusDot.classList.toggle("live", !!data.live);
+            if (data.live && !isBroadcasting) {
+              placeholder.innerHTML = `<div><strong>Live feed available</strong>Press “Watch” to view it.</div>`;
+            }
+          });
+
+          room.onPeerStream((stream) => {
+            remoteStream = stream;
+            statusDot.classList.add("live");
+            if (wantsToWatch) showRemoteStream();
+            else placeholder.innerHTML = `<div><strong>Live feed available</strong>Press “Watch” to view it.</div>`;
+          });
+
+          if (localStream) room.addStream(localStream);
+          connectionText.textContent = "Sharing ready. Open the same room link on another device.";
+          log("Sharing ready.");
+        } catch (err) {
+          room = null;
+          sendState = null;
+          connectionText.textContent = "Camera and UI ready. Sharing failed to load, so local camera/fullscreen still works.";
+          log(`Sharing failed to load: ${err.message}`);
+        }
+      }
+
+      function applyMood(mood) {
+        if (mood === "midnight") {
+          document.body.style.background = "#03040a";
+        } else if (mood === "warm") {
+          document.body.style.background = "#120907";
+        } else {
+          document.body.style.background = "#050711";
+        }
+      }
+
+      function bindButtons() {
+        cameraBtn.addEventListener("click", startCamera);
+        startBtn.addEventListener("click", startCamera);
+        stopBtn.addEventListener("click", () => stopCamera(true));
+        watchBtn.addEventListener("click", showRemoteStream);
+        fullscreenBtn.addEventListener("click", openFullscreenCamera);
+        configBtn.addEventListener("click", () => panel.classList.toggle("open"));
+        resetClockBtn.addEventListener("click", resetClockBox);
+
+        sizeSlider.addEventListener("input", () => {
+          document.documentElement.style.setProperty("--clock-size", `${sizeSlider.value}rem`);
+        });
+
+        fontSelect.addEventListener("change", () => {
+          document.documentElement.style.setProperty("--clock-font", `"${fontSelect.value}"`);
+        });
+
+        moodSelect.addEventListener("change", () => applyMood(moodSelect.value));
+
+        applyRoomBtn.addEventListener("click", () => {
+          stopCamera(true);
+          remoteStream = null;
+          wantsToWatch = false;
+          peerCount = 0;
+          placeholder.classList.remove("hidden");
+          placeholder.innerHTML = `<div><strong>No live feed yet</strong>Start your camera or wait for another user in this room.</div>`;
+          setRoom(roomInput.value);
+          connectSharing();
+        });
+
+        copyLinkBtn.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(location.href);
+            copyLinkBtn.textContent = "Copied";
+            setTimeout(() => copyLinkBtn.textContent = "Copy room link", 1200);
+          } catch {
+            prompt("Copy this link:", location.href);
+          }
+        });
+
+        document.addEventListener("keydown", (e) => {
+          if (e.key.toLowerCase() === "c") panel.classList.toggle("open");
+          if (e.key.toLowerCase() === "f") openFullscreenCamera();
+          if (e.key === "Escape") panel.classList.remove("open");
+        });
+
+        document.addEventListener("fullscreenchange", () => {
+          if (!document.fullscreenElement && screen.orientation?.unlock) {
+            try { screen.orientation.unlock(); } catch {}
+          }
+        });
+
+        window.addEventListener("hashchange", () => {
+          setRoom(getRoomId());
+          connectSharing();
+        });
+
+        window.addEventListener("resize", () => {
+          applyDeviceMode();
+          if (!isPhoneViewer()) {
+            const shellRect = clockShell.getBoundingClientRect();
+            const stageRect = stage.getBoundingClientRect();
+            setClockBox(shellRect.left - stageRect.left, shellRect.top - stageRect.top, shellRect.width, shellRect.height);
+          }
+        });
+
+        window.addEventListener("orientationchange", () => setTimeout(applyDeviceMode, 250));
+      }
+
+      function boot() {
+        applyDeviceMode();
+        setRoom(roomId);
+        bindButtons();
+        enableClockMoveAndResize();
+        restoreClockBox();
+        updateClock();
+        setInterval(updateClock, 250);
+        loadCameras();
+        connectSharing();
+        log("UI ready.");
+      }
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", boot);
       } else {
-        document.body.style.removeProperty("background");
-        root.style.setProperty("--glass", "rgba(255,255,255,0.10)");
+        boot();
       }
-    }
-
-    cameraBtn.addEventListener("click", startCamera);
-    startBtn.addEventListener("click", startCamera);
-    stopBtn.addEventListener("click", () => stopCamera(true));
-    watchBtn.addEventListener("click", showRemoteStream);
-    fullscreenBtn.addEventListener("click", openFullscreenCamera);
-    configBtn.addEventListener("click", () => panel.classList.toggle("open"));
-
-    sizeSlider.addEventListener("input", () => {
-      document.documentElement.style.setProperty("--clock-size", `${sizeSlider.value}rem`);
-    });
-
-    fontSelect.addEventListener("change", () => {
-      document.documentElement.style.setProperty("--clock-font", `"${fontSelect.value}"`);
-    });
-
-    moodSelect.addEventListener("change", () => applyMood(moodSelect.value));
-
-    applyRoomBtn.addEventListener("click", () => {
-      const nextRoom = roomInput.value.trim() || "home-clock";
-      if (nextRoom === currentRoomId) return;
-      stopCamera(true);
-      remoteStream = null;
-      wantsToWatch = false;
-      peerCount = 0;
-      localStorage.setItem("clock-camera-room", nextRoom);
-      location.hash = encodeURIComponent(nextRoom);
-      joinCurrentRoom();
-    });
-
-    copyLinkBtn.addEventListener("click", async () => {
-      await navigator.clipboard.writeText(location.href);
-      copyLinkBtn.textContent = "Copied";
-      setTimeout(() => copyLinkBtn.textContent = "Copy room link", 1200);
-    });
-
-    document.addEventListener("keydown", (e) => {
-      if (e.key.toLowerCase() === "c") panel.classList.toggle("open");
-      if (e.key.toLowerCase() === "f") openFullscreenCamera();
-      if (e.key === "Escape") panel.classList.remove("open");
-    });
-
-    document.addEventListener("fullscreenchange", () => {
-      if (!document.fullscreenElement && screen.orientation?.unlock) {
-        try { screen.orientation.unlock(); } catch {}
-      }
-    });
-
-    window.addEventListener("hashchange", () => {
-      stopCamera(true);
-      remoteStream = null;
-      wantsToWatch = false;
-      peerCount = 0;
-      joinCurrentRoom();
-    });
-
-    window.addEventListener("resize", () => {
-      applyDeviceMode();
-      if (!isPhoneViewer()) {
-        const shellRect = clockShell.getBoundingClientRect();
-        const stageRect = getStageRect();
-        setClockBox(shellRect.left - stageRect.left, shellRect.top - stageRect.top, shellRect.width, shellRect.height);
-      }
-    });
-    window.addEventListener("orientationchange", () => setTimeout(applyDeviceMode, 250));
-
-    applyDeviceMode();
-    restoreClockPosition();
-    enableClockDragging();
-    joinCurrentRoom();
-    loadCameras();
+    })();
   </script>
 </body>
 </html>
