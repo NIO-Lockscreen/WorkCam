@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500&family=Poiret+One&family=Major+Mono+Display&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
 
   <style>
     :root {
@@ -69,7 +70,7 @@
       height: 100%;
       padding: max(22px, env(safe-area-inset-top)) max(22px, env(safe-area-inset-right)) max(22px, env(safe-area-inset-bottom)) max(22px, env(safe-area-inset-left));
       display: grid;
-      grid-template-columns: 1fr minmax(310px, 24vw);
+      grid-template-columns: 1fr minmax(330px, 25vw);
       gap: 22px;
     }
 
@@ -154,25 +155,25 @@
       position: absolute;
       right: 0;
       bottom: 0;
-      width: 46px;
-      height: 46px;
+      width: 52px;
+      height: 52px;
       cursor: nwse-resize;
       touch-action: none;
       z-index: 5;
-      border-right: 3px solid rgba(255,255,255,0.36);
-      border-bottom: 3px solid rgba(255,255,255,0.36);
+      border-right: 3px solid rgba(255,255,255,0.38);
+      border-bottom: 3px solid rgba(255,255,255,0.38);
       border-radius: 0 0 10px 0;
     }
 
     .clock-resize-handle::before {
       content: "";
       position: absolute;
-      right: 11px;
-      bottom: 11px;
+      right: 13px;
+      bottom: 13px;
       width: 16px;
       height: 16px;
-      border-right: 2px solid rgba(255,255,255,0.22);
-      border-bottom: 2px solid rgba(255,255,255,0.22);
+      border-right: 2px solid rgba(255,255,255,0.23);
+      border-bottom: 2px solid rgba(255,255,255,0.23);
     }
 
     .topbar {
@@ -226,14 +227,14 @@
     .btn:hover { transform: translateY(-1px); background: rgba(255,255,255,0.20); }
     .btn:active { transform: translateY(1px) scale(0.99); }
     .btn.primary { background: rgba(236, 240, 255, 0.92); color: #090b16; }
-    .btn.danger { background: rgba(255, 101, 101, 0.20); color: #ffdede; }
+    .btn.danger { background: rgba(255, 101, 101, 0.22); color: #ffdede; }
     .btn.small { padding: 8px 11px; font-size: 0.82rem; }
 
     .side {
       min-width: 0;
       min-height: 0;
       display: grid;
-      grid-template-rows: auto 1fr auto;
+      grid-template-rows: auto auto 1fr auto;
       gap: 16px;
       border-radius: var(--radius);
       padding: 18px;
@@ -257,6 +258,24 @@
       font-size: 0.9rem;
       line-height: 1.35;
     }
+
+    .status-card {
+      display: grid;
+      gap: 8px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.07);
+      border-radius: 24px;
+      padding: 14px;
+      color: var(--muted);
+      font-size: 0.88rem;
+      line-height: 1.35;
+    }
+
+    .status-card strong { color: var(--text); font-size: 1rem; }
+
+    .streamer-status { display: none; }
+    body.is-streaming .viewer-only { display: none !important; }
+    body.is-streaming .streamer-status { display: grid; }
 
     .video-card {
       position: relative;
@@ -287,9 +306,9 @@
     video {
       width: 100%;
       height: 100%;
-      object-fit: cover;
+      object-fit: contain;
       display: block;
-      background: #060711;
+      background: #000;
     }
 
     .video-placeholder {
@@ -308,6 +327,19 @@
       font-size: 1.2rem;
       margin-bottom: 7px;
     }
+
+    .fs-exit {
+      position: absolute;
+      right: max(18px, env(safe-area-inset-right));
+      top: max(18px, env(safe-area-inset-top));
+      z-index: 80;
+      display: none;
+      background: rgba(0,0,0,0.62);
+      border: 1px solid rgba(255,255,255,0.22);
+      backdrop-filter: blur(14px);
+    }
+
+    .video-card:fullscreen .fs-exit { display: inline-flex; }
 
     .status-dot {
       width: 10px;
@@ -403,7 +435,8 @@
     body.phone-viewer .topbar,
     body.phone-viewer .stage,
     body.phone-viewer .panel,
-    body.phone-viewer .side > div:first-child { display: none !important; }
+    body.phone-viewer .side > div:first-child,
+    body.phone-viewer .status-card { display: none !important; }
 
     body.phone-viewer .app {
       width: 100vw;
@@ -445,6 +478,19 @@
       background: #000;
     }
 
+    body.phone-viewer.is-streaming .viewer-only {
+      display: block !important;
+    }
+
+    body.phone-viewer.is-streaming .video-card {
+      display: grid !important;
+      place-items: center;
+    }
+
+    body.phone-viewer.is-streaming .video-placeholder {
+      display: grid !important;
+    }
+
     body.phone-viewer .actions {
       position: fixed;
       left: 50%;
@@ -482,7 +528,6 @@
     <div class="pill room-pill" id="roomLabel">Room: starting…</div>
     <div class="pill">
       <span class="status-dot" id="statusDot"></span>
-      <button class="btn small" id="cameraBtn" type="button">Camera</button>
       <button class="btn small" id="configBtn" type="button">Config</button>
     </div>
   </div>
@@ -499,16 +544,27 @@
     <aside class="side">
       <div>
         <h1>Live View</h1>
-        <p id="connectionText">Open the same room link on another device. Camera works locally even if sharing/signalling is unavailable.</p>
+        <p id="connectionText">Open the same room link on another device. Press Start on the camera device, then Watch on this PC.</p>
       </div>
 
-      <div class="video-card" id="videoCard">
+      <div class="status-card streamer-status" id="streamerStatus">
+        <strong>This device is streaming</strong>
+        <span id="streamerText">Live view is hidden on the active camera device. Open this room on your PC and press Watch.</span>
+      </div>
+
+      <div class="status-card viewer-only" id="viewerStatus">
+        <strong id="viewerTitle">Ready</strong>
+        <span id="viewerText">No stream connected yet.</span>
+      </div>
+
+      <div class="video-card viewer-only" id="videoCard">
         <video id="remoteVideo" autoplay playsinline class="hidden"></video>
         <video id="localVideo" autoplay muted playsinline class="hidden"></video>
+        <button class="btn fs-exit" id="exitFullscreenBtn" type="button">Exit fullscreen</button>
         <div class="video-placeholder" id="placeholder">
           <div>
             <strong>No live feed yet</strong>
-            Start your camera or wait for another user in this room.
+            Start streaming on the other device, then press Watch here.
           </div>
         </div>
       </div>
@@ -565,7 +621,7 @@
     </div>
 
     <div class="fineprint" id="debugText">
-      UI ready. Camera requires HTTPS or localhost. Sharing will connect after the signalling library loads.
+      UI ready. Camera requires HTTPS or localhost. Streaming uses PeerJS public signalling.
     </div>
   </section>
 
@@ -574,7 +630,6 @@
       "use strict";
 
       const $ = (id) => document.getElementById(id);
-
       const stage = $("stage");
       const clock = $("clock");
       const clockShell = $("clockShell");
@@ -582,13 +637,13 @@
       const seconds = $("seconds");
       const statusDot = $("statusDot");
       const roomLabel = $("roomLabel");
-      const cameraBtn = $("cameraBtn");
       const configBtn = $("configBtn");
       const panel = $("panel");
       const startBtn = $("startBtn");
       const stopBtn = $("stopBtn");
       const watchBtn = $("watchBtn");
       const fullscreenBtn = $("fullscreenBtn");
+      const exitFullscreenBtn = $("exitFullscreenBtn");
       const localVideo = $("localVideo");
       const remoteVideo = $("remoteVideo");
       const placeholder = $("placeholder");
@@ -603,21 +658,43 @@
       const copyLinkBtn = $("copyLinkBtn");
       const resetClockBtn = $("resetClockBtn");
       const debugText = $("debugText");
+      const viewerTitle = $("viewerTitle");
+      const viewerText = $("viewerText");
+      const streamerText = $("streamerText");
 
-      const APP_ID = "thomas-always-on-clock-camera-v3";
+      const PEER_OPTIONS = {
+        host: "0.peerjs.com",
+        port: 443,
+        path: "/",
+        secure: true,
+        debug: 1
+      };
+
       let roomId = getRoomId();
-      let room = null;
-      let sendState = null;
       let localStream = null;
       let remoteStream = null;
-      let isBroadcasting = false;
-      let wantsToWatch = false;
-      let peerCount = 0;
+      let streamerPeer = null;
+      let viewerPeer = null;
+      let viewerCall = null;
+      let activeCalls = new Set();
       let drag = null;
+      let isBroadcasting = false;
+      let watchTimeout = null;
 
       function log(message) {
         console.log(`[clock-camera] ${message}`);
-        if (debugText) debugText.textContent = message;
+        debugText.textContent = message;
+      }
+
+      function setViewerStatus(title, text) {
+        viewerTitle.textContent = title;
+        viewerText.textContent = text;
+        connectionText.textContent = text;
+      }
+
+      function setStreamerStatus(text) {
+        streamerText.textContent = text;
+        connectionText.textContent = text;
       }
 
       function isPhoneViewer() {
@@ -640,6 +717,19 @@
         history.replaceState(null, "", `${location.pathname}${location.search}#${encodeURIComponent(roomId)}`);
         roomInput.value = roomId;
         roomLabel.textContent = `Room: ${roomId}`;
+      }
+
+      function streamerId() {
+        const slug = roomId
+          .toLowerCase()
+          .replace(/[^a-z0-9_-]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 42) || "home-clock";
+        return `td-clockcam-${slug}-streamer`;
+      }
+
+      function peerReady() {
+        return typeof window.Peer === "function";
       }
 
       function updateClock() {
@@ -670,7 +760,12 @@
         clockShell.style.top = `${box.top}px`;
         clockShell.style.width = `${box.width}px`;
         clockShell.style.height = `${box.height}px`;
-        if (save) localStorage.setItem("clock-box-v3", JSON.stringify(box));
+
+        const rem = Math.max(7, Math.min(32, Math.min(box.width, box.height) / 25));
+        document.documentElement.style.setProperty("--clock-size", `${rem.toFixed(1)}rem`);
+        sizeSlider.value = String(rem.toFixed(1));
+
+        if (save) localStorage.setItem("clock-box-v4", JSON.stringify(box));
         return box;
       }
 
@@ -684,7 +779,7 @@
       function restoreClockBox() {
         requestAnimationFrame(() => {
           try {
-            const saved = JSON.parse(localStorage.getItem("clock-box-v3") || "null");
+            const saved = JSON.parse(localStorage.getItem("clock-box-v4") || "null");
             if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top) && Number.isFinite(saved.width) && Number.isFinite(saved.height)) {
               setClockBox(saved.left, saved.top, saved.width, saved.height);
               return;
@@ -759,13 +854,40 @@
         }
       }
 
-      async function startCamera() {
+      function closeViewerConnection() {
+        clearTimeout(watchTimeout);
+        watchTimeout = null;
+        try { viewerCall?.close?.(); } catch {}
+        try { viewerPeer?.destroy?.(); } catch {}
+        viewerCall = null;
+        viewerPeer = null;
+        remoteStream = null;
+        remoteVideo.srcObject = null;
+        remoteVideo.classList.add("hidden");
+      }
+
+      function closeStreamerPeer() {
+        activeCalls.forEach((call) => {
+          try { call.close(); } catch {}
+        });
+        activeCalls.clear();
+        try { streamerPeer?.destroy?.(); } catch {}
+        streamerPeer = null;
+      }
+
+      async function startStreaming() {
         if (!navigator.mediaDevices?.getUserMedia) {
           alert("This browser does not support camera access. Use HTTPS, localhost, Chrome, Edge, Safari, or Firefox.");
           return;
         }
+        if (!peerReady()) {
+          alert("PeerJS did not load. Check internet access or that unpkg.com is not blocked.");
+          return;
+        }
 
-        stopCamera(false);
+        closeViewerConnection();
+        stopStreaming(false, false);
+
         const deviceId = cameraSelect.value;
         const video = deviceId
           ? { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
@@ -773,81 +895,172 @@
 
         try {
           localStream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
-          localVideo.srcObject = localStream;
-          localVideo.classList.remove("hidden");
-          remoteVideo.classList.add("hidden");
-          placeholder.classList.add("hidden");
-          startBtn.classList.add("hidden");
-          stopBtn.classList.remove("hidden");
-          statusDot.classList.add("live");
           isBroadcasting = true;
-          log("Camera started.");
+          document.body.classList.add("is-streaming");
+          statusDot.classList.add("live");
+          startBtn.classList.add("hidden");
+          watchBtn.classList.add("hidden");
+          fullscreenBtn.classList.add("hidden");
+          stopBtn.classList.remove("hidden");
+          localVideo.srcObject = null;
+          localVideo.classList.add("hidden");
+          remoteVideo.classList.add("hidden");
+          placeholder.classList.remove("hidden");
+          placeholder.innerHTML = `<div><strong>Streaming active</strong>Live view is hidden on this camera device.</div>`;
+          setStreamerStatus(`Starting stream for room “${roomId}”…`);
 
-          try {
-            room?.addStream?.(localStream);
-            sendState?.({ type: "live", live: true, at: Date.now() });
-          } catch (err) {
-            log(`Camera started locally. Sharing not connected: ${err.message}`);
-          }
+          closeStreamerPeer();
+          streamerPeer = new Peer(streamerId(), PEER_OPTIONS);
+
+          streamerPeer.on("open", () => {
+            setStreamerStatus(`Streaming active. On your PC, open this same room and press Watch.`);
+            log(`Streamer ready: ${streamerId()}`);
+          });
+
+          streamerPeer.on("call", (call) => {
+            activeCalls.add(call);
+            call.answer(localStream);
+            setStreamerStatus(`Streaming to ${activeCalls.size} viewer${activeCalls.size === 1 ? "" : "s"}. Live view is hidden here.`);
+
+            call.on("close", () => {
+              activeCalls.delete(call);
+              setStreamerStatus(activeCalls.size ? `Streaming to ${activeCalls.size} viewer${activeCalls.size === 1 ? "" : "s"}.` : "Streaming active. No viewer connected right now.");
+            });
+
+            call.on("error", () => {
+              activeCalls.delete(call);
+              setStreamerStatus("A viewer disconnected or failed to connect.");
+            });
+          });
+
+          streamerPeer.on("error", (err) => {
+            if (err?.type === "unavailable-id") {
+              alert("This room already has an active streamer. Stop the other streamer first or change room name.");
+              stopStreaming(true, true);
+            } else {
+              setStreamerStatus(`Streaming error: ${err.message || err.type || "unknown error"}`);
+              log(`Streamer error: ${err.message || err.type || err}`);
+            }
+          });
 
           await loadCameras();
         } catch (err) {
           alert(`Could not start camera: ${err.message}`);
           log(`Camera error: ${err.message}`);
+          stopStreaming(true, true);
         }
       }
 
-      function stopCamera(sendUpdate = true) {
-        if (localStream) {
-          try { room?.removeStream?.(localStream); } catch {}
+      function stopStreaming(resetUi = true, stopTracks = true) {
+        closeStreamerPeer();
+        if (stopTracks && localStream) {
           localStream.getTracks().forEach((track) => track.stop());
         }
         localStream = null;
         isBroadcasting = false;
-        localVideo.srcObject = null;
-        localVideo.classList.add("hidden");
+        document.body.classList.remove("is-streaming");
+        statusDot.classList.remove("live");
         startBtn.classList.remove("hidden");
+        watchBtn.classList.remove("hidden");
+        fullscreenBtn.classList.remove("hidden");
         stopBtn.classList.add("hidden");
-        statusDot.classList.toggle("live", !!remoteStream);
-
-        if (!remoteStream) {
+        if (resetUi) {
           placeholder.classList.remove("hidden");
-          placeholder.innerHTML = `<div><strong>No live feed yet</strong>Start your camera or wait for another user in this room.</div>`;
+          placeholder.innerHTML = `<div><strong>No live feed yet</strong>Start streaming on the other device, then press Watch here.</div>`;
+          setViewerStatus("Ready", `Open the same room link on another device. Press Start there, then Watch here.`);
         }
-
-        if (sendUpdate) sendState?.({ type: "live", live: false, at: Date.now() });
       }
 
-      function showRemoteStream() {
-        wantsToWatch = true;
-        if (!remoteStream) {
-          placeholder.classList.remove("hidden");
-          placeholder.innerHTML = `<div><strong>No feed received yet</strong>Keep this page open while the broadcaster starts camera mode.</div>`;
-          log("Waiting for remote feed.");
+      function watchStream() {
+        if (!peerReady()) {
+          alert("PeerJS did not load. Check internet access or that unpkg.com is not blocked.");
           return;
         }
-        remoteVideo.srcObject = remoteStream;
-        remoteVideo.classList.remove("hidden");
-        localVideo.classList.add("hidden");
-        placeholder.classList.add("hidden");
-        remoteVideo.play().catch(() => {});
-        log("Watching remote feed.");
+        if (isBroadcasting) {
+          alert("This device is already streaming. Open the room on your PC to watch.");
+          return;
+        }
+
+        closeViewerConnection();
+        setViewerStatus("Connecting…", `Looking for active streamer in room “${roomId}”…`);
+        placeholder.classList.remove("hidden");
+        placeholder.innerHTML = `<div><strong>Connecting…</strong>Looking for the camera device in this room.</div>`;
+
+        try {
+          viewerPeer = new Peer(undefined, PEER_OPTIONS);
+
+          viewerPeer.on("open", () => {
+            const emptyStream = new MediaStream();
+            viewerCall = viewerPeer.call(streamerId(), emptyStream, { metadata: { viewer: true, roomId } });
+
+            if (!viewerCall) {
+              setViewerStatus("No streamer", "Could not call the streamer. Make sure the other device has pressed Start.");
+              return;
+            }
+
+            viewerCall.on("stream", (stream) => {
+              clearTimeout(watchTimeout);
+              remoteStream = stream;
+              remoteVideo.srcObject = stream;
+              remoteVideo.classList.remove("hidden");
+              localVideo.classList.add("hidden");
+              placeholder.classList.add("hidden");
+              statusDot.classList.add("live");
+              remoteVideo.play().catch(() => {});
+              setViewerStatus("Watching live", "Remote camera connected.");
+              log("Remote stream connected.");
+            });
+
+            viewerCall.on("close", () => {
+              setViewerStatus("Stream ended", "The camera device stopped streaming or disconnected.");
+              placeholder.classList.remove("hidden");
+              placeholder.innerHTML = `<div><strong>Stream ended</strong>Press Watch to reconnect.</div>`;
+              statusDot.classList.remove("live");
+            });
+
+            viewerCall.on("error", (err) => {
+              setViewerStatus("Viewer error", err.message || "Viewer connection failed.");
+              log(`Viewer call error: ${err.message || err}`);
+            });
+
+            watchTimeout = setTimeout(() => {
+              if (!remoteStream) {
+                closeViewerConnection();
+                statusDot.classList.remove("live");
+                setViewerStatus("No active streamer found", "Start streaming on the other device first, then press Watch again on this PC.");
+                placeholder.classList.remove("hidden");
+                placeholder.innerHTML = `<div><strong>No active streamer found</strong>Start on the other device first, then press Watch again.</div>`;
+              }
+            }, 12000);
+          });
+
+          viewerPeer.on("error", (err) => {
+            clearTimeout(watchTimeout);
+            statusDot.classList.remove("live");
+            const message = err?.type === "peer-unavailable"
+              ? "No active streamer found. Start streaming on the other device first, then press Watch again."
+              : (err.message || err.type || "Viewer peer error.");
+            setViewerStatus("Connection failed", message);
+            placeholder.classList.remove("hidden");
+            placeholder.innerHTML = `<div><strong>Connection failed</strong>${message}</div>`;
+            log(`Viewer peer error: ${message}`);
+          });
+        } catch (err) {
+          setViewerStatus("Connection failed", err.message);
+          log(`Watch error: ${err.message}`);
+        }
       }
 
       function getActiveVideo() {
-        if (!localVideo.classList.contains("hidden")) return localVideo;
         if (!remoteVideo.classList.contains("hidden")) return remoteVideo;
-        if (remoteStream) {
-          showRemoteStream();
-          return remoteVideo;
-        }
+        if (!localVideo.classList.contains("hidden")) return localVideo;
         return null;
       }
 
       async function openFullscreenCamera() {
         const activeVideo = getActiveVideo();
         if (!activeVideo) {
-          alert("Start or watch a camera feed first.");
+          alert("Watch a camera feed first.");
           return;
         }
 
@@ -866,74 +1079,20 @@
         }
       }
 
-      async function connectSharing() {
-        setRoom(roomId);
-        connectionText.textContent = "Camera and UI ready. Loading sharing/signalling…";
-
-        try {
-          const mod = await import("https://esm.sh/trystero/torrent@0.21.0");
-          const joinRoom = mod.joinRoom;
-          if (typeof joinRoom !== "function") throw new Error("joinRoom not found");
-
-          if (room?.leave) room.leave();
-          room = joinRoom({ appId: APP_ID }, roomId);
-          const actions = room.makeAction("state");
-          sendState = actions[0];
-          const getState = actions[1];
-
-          room.onPeerJoin(() => {
-            peerCount += 1;
-            connectionText.textContent = `${peerCount} other user${peerCount === 1 ? "" : "s"} in this room.`;
-            if (isBroadcasting) sendState?.({ type: "live", live: true, at: Date.now() });
-          });
-
-          room.onPeerLeave(() => {
-            peerCount = Math.max(0, peerCount - 1);
-            connectionText.textContent = peerCount ? `${peerCount} other user${peerCount === 1 ? "" : "s"} in this room.` : "Sharing ready. Open the same room link on another device.";
-          });
-
-          getState((data) => {
-            if (!data || data.type !== "live") return;
-            statusDot.classList.toggle("live", !!data.live);
-            if (data.live && !isBroadcasting) {
-              placeholder.innerHTML = `<div><strong>Live feed available</strong>Press “Watch” to view it.</div>`;
-            }
-          });
-
-          room.onPeerStream((stream) => {
-            remoteStream = stream;
-            statusDot.classList.add("live");
-            if (wantsToWatch) showRemoteStream();
-            else placeholder.innerHTML = `<div><strong>Live feed available</strong>Press “Watch” to view it.</div>`;
-          });
-
-          if (localStream) room.addStream(localStream);
-          connectionText.textContent = "Sharing ready. Open the same room link on another device.";
-          log("Sharing ready.");
-        } catch (err) {
-          room = null;
-          sendState = null;
-          connectionText.textContent = "Camera and UI ready. Sharing failed to load, so local camera/fullscreen still works.";
-          log(`Sharing failed to load: ${err.message}`);
-        }
+      function exitFullscreen() {
+        if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
       }
 
       function applyMood(mood) {
-        if (mood === "midnight") {
-          document.body.style.background = "#03040a";
-        } else if (mood === "warm") {
-          document.body.style.background = "#120907";
-        } else {
-          document.body.style.background = "#050711";
-        }
+        document.body.style.background = mood === "midnight" ? "#03040a" : mood === "warm" ? "#120907" : "#050711";
       }
 
       function bindButtons() {
-        cameraBtn.addEventListener("click", startCamera);
-        startBtn.addEventListener("click", startCamera);
-        stopBtn.addEventListener("click", () => stopCamera(true));
-        watchBtn.addEventListener("click", showRemoteStream);
+        startBtn.addEventListener("click", startStreaming);
+        stopBtn.addEventListener("click", () => stopStreaming(true, true));
+        watchBtn.addEventListener("click", watchStream);
         fullscreenBtn.addEventListener("click", openFullscreenCamera);
+        exitFullscreenBtn.addEventListener("click", exitFullscreen);
         configBtn.addEventListener("click", () => panel.classList.toggle("open"));
         resetClockBtn.addEventListener("click", resetClockBox);
 
@@ -948,14 +1107,10 @@
         moodSelect.addEventListener("change", () => applyMood(moodSelect.value));
 
         applyRoomBtn.addEventListener("click", () => {
-          stopCamera(true);
-          remoteStream = null;
-          wantsToWatch = false;
-          peerCount = 0;
-          placeholder.classList.remove("hidden");
-          placeholder.innerHTML = `<div><strong>No live feed yet</strong>Start your camera or wait for another user in this room.</div>`;
+          stopStreaming(true, true);
+          closeViewerConnection();
           setRoom(roomInput.value);
-          connectSharing();
+          setViewerStatus("Ready", `Room changed to “${roomId}”. Start on the camera device, then press Watch here.`);
         });
 
         copyLinkBtn.addEventListener("click", async () => {
@@ -981,8 +1136,10 @@
         });
 
         window.addEventListener("hashchange", () => {
+          stopStreaming(true, true);
+          closeViewerConnection();
           setRoom(getRoomId());
-          connectSharing();
+          setViewerStatus("Ready", `Room changed to “${roomId}”. Start on the camera device, then press Watch here.`);
         });
 
         window.addEventListener("resize", () => {
@@ -1006,15 +1163,12 @@
         updateClock();
         setInterval(updateClock, 250);
         loadCameras();
-        connectSharing();
-        log("UI ready.");
+        setViewerStatus("Ready", `Room “${roomId}” ready. Start on the camera device, then press Watch on this PC.`);
+        log(peerReady() ? "UI ready. PeerJS loaded." : "UI ready, but PeerJS failed to load.");
       }
 
-      if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", boot);
-      } else {
-        boot();
-      }
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+      else boot();
     })();
   </script>
 </body>
