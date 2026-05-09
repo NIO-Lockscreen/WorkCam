@@ -720,6 +720,14 @@
       let isBroadcasting = false;
       let watchTimeout = null;
 
+      // Live discovery state
+      let isStreamerLive = false;       // last known live state for this room
+      let wantsToWatch = false;         // user pressed Watch and wants the stream
+      let autoWatch = true;             // auto-connect when streamer comes online
+      let pollTimer = null;             // setTimeout handle for next poll
+      let pendingProbe = null;          // the in-flight discovery DataConnection
+      let probeTimeout = null;          // probe open-timeout handle
+
       function log(message) {
         console.log(`[clock-camera] ${message}`);
         debugText.textContent = message;
@@ -909,9 +917,26 @@
         document.body.classList.add("has-remote-controls");
       }
 
+      function closeViewerStreamOnly() {
+        // Close just the active media call; keep discovery peer alive so we can reconnect.
+        clearTimeout(watchTimeout);
+        watchTimeout = null;
+        try { viewerCall?.close?.(); } catch {}
+        viewerCall = null;
+        remoteStream = null;
+        remoteVideo.srcObject = null;
+        remoteVideo.classList.add("hidden");
+      }
+
       function closeViewerConnection() {
         clearTimeout(watchTimeout);
         watchTimeout = null;
+        clearTimeout(pollTimer);
+        pollTimer = null;
+        clearTimeout(probeTimeout);
+        probeTimeout = null;
+        try { pendingProbe?.close?.(); } catch {}
+        pendingProbe = null;
         try { viewerCall?.close?.(); } catch {}
         try { viewerData?.close?.(); } catch {}
         try { viewerPeer?.destroy?.(); } catch {}
@@ -922,6 +947,9 @@
         remoteVideo.srcObject = null;
         remoteVideo.classList.add("hidden");
         document.body.classList.remove("has-remote-controls");
+        isStreamerLive = false;
+        wantsToWatch = false;
+        statusDot.classList.remove("live");
       }
 
       function closeStreamerPeer() {
@@ -1039,26 +1067,39 @@
               if (!data || typeof data !== "object") return;
               if (data.type === "switch-camera") switchStreamerCamera(data.deviceId || "");
               if (data.type === "request-cameras") sendCameraList();
+              if (data.type === "ping") {
+                try { if (conn.open) conn.send({ type: "pong", live: true }); } catch {}
+              }
+              if (data.type === "request-stream") {
+                // Streamer initiates the call to the viewer (reliable direction).
+                if (!localStream) {
+                  try { conn.send({ type: "status", text: "Streamer has no active camera." }); } catch {}
+                  return;
+                }
+                try {
+                  const call = streamerPeer.call(conn.peer, localStream, { metadata: { roomId, role: "stream" } });
+                  if (!call) {
+                    try { conn.send({ type: "status", text: "Could not open call to viewer." }); } catch {}
+                    return;
+                  }
+                  activeCalls.add(call);
+                  setStreamerStatus(`Streaming to ${activeCalls.size} viewer${activeCalls.size === 1 ? "" : "s"}.`);
+                  call.on("close", () => {
+                    activeCalls.delete(call);
+                    setStreamerStatus(activeCalls.size ? `Streaming to ${activeCalls.size} viewer${activeCalls.size === 1 ? "" : "s"}.` : "Streaming active. No viewer connected right now.");
+                  });
+                  call.on("error", (err) => {
+                    activeCalls.delete(call);
+                    log(`Streamer call error: ${err.message || err}`);
+                    setStreamerStatus("A viewer disconnected or failed to connect.");
+                  });
+                } catch (err) {
+                  log(`Failed to call viewer: ${err.message || err}`);
+                }
+              }
             });
             conn.on("close", () => controlConnections.delete(conn));
             conn.on("error", () => controlConnections.delete(conn));
-          });
-
-          streamerPeer.on("call", (call) => {
-            activeCalls.add(call);
-            call.answer(localStream);
-            setStreamerStatus(`Streaming to ${activeCalls.size} viewer${activeCalls.size === 1 ? "" : "s"}.`);
-            sendCameraList();
-
-            call.on("close", () => {
-              activeCalls.delete(call);
-              setStreamerStatus(activeCalls.size ? `Streaming to ${activeCalls.size} viewer${activeCalls.size === 1 ? "" : "s"}.` : "Streaming active. No viewer connected right now.");
-            });
-
-            call.on("error", () => {
-              activeCalls.delete(call);
-              setStreamerStatus("A viewer disconnected or failed to connect.");
-            });
           });
 
           streamerPeer.on("error", (err) => {
@@ -1093,8 +1134,218 @@
         localVideo.classList.add("hidden");
         if (resetUi) {
           placeholder.classList.remove("hidden");
-          placeholder.innerHTML = `<div><strong>No live feed yet</strong>Start streaming on the other device, then press Watch here.</div>`;
-          setViewerStatus("Ready", `Open the same room link on another device. Press Start there, then Watch here.`);
+          placeholder.innerHTML = `<div><strong>No live feed yet</strong>Searching for a streamer in this room…</div>`;
+          setViewerStatus("Ready", `Searching for an active streamer in room “${roomId}”… will auto-connect when one is found.`);
+          // Resume discovery so this device can become a viewer again.
+          ensureViewerPeer();
+        }
+      }
+
+      function ensureViewerPeer() {
+        if (isBroadcasting) return;
+        if (viewerPeer && !viewerPeer.destroyed) return;
+        if (!peerReady()) {
+          log("PeerJS did not load yet.");
+          return;
+        }
+
+        viewerPeer = new Peer(undefined, PEER_OPTIONS);
+
+        viewerPeer.on("open", (id) => {
+          log(`Viewer ready (id: ${id}). Watching room “${roomId}”…`);
+          schedulePoll(0);
+        });
+
+        // The streamer calls us. We answer with no stream (receive-only).
+        viewerPeer.on("call", (call) => {
+          if (!wantsToWatch) {
+            // Unsolicited call — accept anyway so the user can see the feed.
+            wantsToWatch = true;
+          }
+          try { viewerCall?.close?.(); } catch {}
+          viewerCall = call;
+          try {
+            call.answer(); // no stream from viewer side; accepts incoming media
+          } catch (err) {
+            log(`Answer failed: ${err.message || err}`);
+            return;
+          }
+
+          call.on("stream", (stream) => {
+            clearTimeout(watchTimeout);
+            remoteStream = stream;
+            remoteVideo.srcObject = stream;
+            remoteVideo.classList.remove("hidden");
+            localVideo.classList.add("hidden");
+            placeholder.classList.add("hidden");
+            statusDot.classList.add("live");
+            remoteVideo.play().catch(() => {});
+            setViewerStatus("Watching live", "Remote camera connected.");
+            log("Remote stream connected.");
+          });
+
+          call.on("close", () => {
+            if (viewerCall === call) viewerCall = null;
+            remoteStream = null;
+            remoteVideo.srcObject = null;
+            remoteVideo.classList.add("hidden");
+            placeholder.classList.remove("hidden");
+            placeholder.innerHTML = `<div><strong>Stream ended</strong>Waiting for the camera device to start again…</div>`;
+            setViewerStatus(isStreamerLive ? "Reconnecting…" : "Stream ended", isStreamerLive ? "Restarting connection." : "The camera device stopped streaming.");
+          });
+
+          call.on("error", (err) => {
+            log(`Viewer call error: ${err.message || err}`);
+          });
+        });
+
+        viewerPeer.on("error", (err) => {
+          if (err?.type === "peer-unavailable") {
+            // Streamer not online — normal during discovery.
+            handleProbeFailed();
+          } else if (err?.type === "network" || err?.type === "disconnected") {
+            log(`Viewer peer network error: ${err.message || err.type}`);
+            schedulePoll(4000);
+          } else {
+            log(`Viewer peer error: ${err.message || err.type || err}`);
+            schedulePoll(5000);
+          }
+        });
+
+        viewerPeer.on("disconnected", () => {
+          // PeerJS auto-reconnects; if not, recreate.
+          try { viewerPeer.reconnect(); } catch {}
+        });
+      }
+
+      function schedulePoll(delayMs) {
+        clearTimeout(pollTimer);
+        pollTimer = setTimeout(pollForStreamer, Math.max(0, delayMs ?? 4000));
+      }
+
+      function handleProbeFailed() {
+        clearTimeout(probeTimeout);
+        probeTimeout = null;
+        try { pendingProbe?.close?.(); } catch {}
+        pendingProbe = null;
+        if (isStreamerLive) {
+          isStreamerLive = false;
+          updateLiveBadge();
+          if (!viewerCall) {
+            setViewerStatus("Waiting for streamer", `No active streamer in room “${roomId}”. Will auto-connect when one starts.`);
+            placeholder.classList.remove("hidden");
+            placeholder.innerHTML = `<div><strong>Waiting for streamer…</strong>The camera device is offline. This view will reconnect automatically.</div>`;
+          }
+        } else if (!viewerCall && wantsToWatch) {
+          // Keep showing waiting state.
+          setViewerStatus("Waiting for streamer", `No active streamer in room “${roomId}”. Will auto-connect when one starts.`);
+        }
+        schedulePoll(4000);
+      }
+
+      function pollForStreamer() {
+        if (isBroadcasting) return;
+        if (!viewerPeer || viewerPeer.destroyed) return;
+        if (viewerPeer.disconnected) {
+          schedulePoll(2000);
+          return;
+        }
+        if (viewerData?.open) {
+          // Already connected — just verify with a ping.
+          try { viewerData.send({ type: "ping" }); } catch {}
+          schedulePoll(5000);
+          return;
+        }
+        if (pendingProbe) return; // probe in flight
+
+        let opened = false;
+        const probe = viewerPeer.connect(streamerId(), { reliable: true, metadata: { roomId, role: "viewer-control" } });
+        pendingProbe = probe;
+
+        probeTimeout = setTimeout(() => {
+          if (!opened) {
+            try { probe.close(); } catch {}
+            pendingProbe = null;
+            handleProbeFailed();
+          }
+        }, 6000);
+
+        probe.on("open", () => {
+          opened = true;
+          clearTimeout(probeTimeout);
+          probeTimeout = null;
+          pendingProbe = null;
+          viewerData = probe;
+
+          if (!isStreamerLive) {
+            isStreamerLive = true;
+            updateLiveBadge();
+            log(`Streamer detected in room “${roomId}”.`);
+          }
+
+          try { probe.send({ type: "request-cameras" }); } catch {}
+
+          if (autoWatch || wantsToWatch) {
+            requestStreamFromStreamer();
+          } else {
+            setViewerStatus("Streamer is live", `Press Watch to view the camera in “${roomId}”.`);
+          }
+
+          schedulePoll(5000);
+        });
+
+        probe.on("data", (data) => {
+          if (!data || typeof data !== "object") return;
+          if (data.type === "cameras") renderRemoteCameras(data.cameras, data.activeDeviceId);
+          if (data.type === "status") remoteCameraText.textContent = data.text || remoteCameraText.textContent;
+          if (data.type === "pong") {
+            if (!isStreamerLive) {
+              isStreamerLive = true;
+              updateLiveBadge();
+            }
+          }
+        });
+
+        probe.on("close", () => {
+          if (viewerData === probe) viewerData = null;
+          handleProbeFailed();
+        });
+
+        probe.on("error", (err) => {
+          log(`Probe error: ${err?.message || err?.type || err}`);
+          if (pendingProbe === probe) pendingProbe = null;
+          if (!opened) handleProbeFailed();
+        });
+      }
+
+      function requestStreamFromStreamer() {
+        if (!viewerData?.open) return;
+        if (viewerCall) return; // already connected
+        try {
+          viewerData.send({ type: "request-stream" });
+          setViewerStatus("Connecting…", "Requesting stream from camera device…");
+          placeholder.classList.remove("hidden");
+          placeholder.innerHTML = `<div><strong>Connecting…</strong>Asking the camera device for the live feed.</div>`;
+          clearTimeout(watchTimeout);
+          watchTimeout = setTimeout(() => {
+            if (!remoteStream) {
+              setViewerStatus("Connection slow", "Stream did not arrive yet. The streamer may have just stopped — will retry automatically.");
+            }
+          }, 10000);
+        } catch (err) {
+          log(`request-stream failed: ${err.message || err}`);
+        }
+      }
+
+      function updateLiveBadge() {
+        if (isStreamerLive) {
+          statusDot.classList.add("live");
+          watchBtn.textContent = "Watch ●";
+          watchBtn.classList.add("primary");
+        } else {
+          if (!isBroadcasting && !viewerCall) statusDot.classList.remove("live");
+          watchBtn.textContent = "Watch";
+          watchBtn.classList.remove("primary");
         }
       }
 
@@ -1108,85 +1359,16 @@
           return;
         }
 
-        closeViewerConnection();
-        setViewerStatus("Connecting…", `Looking for active streamer in room “${roomId}”…`);
-        placeholder.classList.remove("hidden");
-        placeholder.innerHTML = `<div><strong>Connecting…</strong>Looking for the camera device in this room.</div>`;
+        wantsToWatch = true;
+        ensureViewerPeer();
 
-        try {
-          viewerPeer = new Peer(undefined, PEER_OPTIONS);
-
-          viewerPeer.on("open", () => {
-            viewerData = viewerPeer.connect(streamerId(), { reliable: true, metadata: { roomId, role: "viewer-control" } });
-            viewerData.on("open", () => {
-              viewerData.send({ type: "request-cameras" });
-            });
-            viewerData.on("data", (data) => {
-              if (!data || typeof data !== "object") return;
-              if (data.type === "cameras") renderRemoteCameras(data.cameras, data.activeDeviceId);
-              if (data.type === "status") remoteCameraText.textContent = data.text || remoteCameraText.textContent;
-            });
-            viewerData.on("error", (err) => log(`Control connection error: ${err.message || err}`));
-
-            const emptyStream = new MediaStream();
-            viewerCall = viewerPeer.call(streamerId(), emptyStream, { metadata: { viewer: true, roomId } });
-
-            if (!viewerCall) {
-              setViewerStatus("No streamer", "Could not call the streamer. Make sure the other device has pressed Start.");
-              return;
-            }
-
-            viewerCall.on("stream", (stream) => {
-              clearTimeout(watchTimeout);
-              remoteStream = stream;
-              remoteVideo.srcObject = stream;
-              remoteVideo.classList.remove("hidden");
-              localVideo.classList.add("hidden");
-              placeholder.classList.add("hidden");
-              statusDot.classList.add("live");
-              remoteVideo.play().catch(() => {});
-              setViewerStatus("Watching live", "Remote camera connected.");
-              log("Remote stream connected.");
-            });
-
-            viewerCall.on("close", () => {
-              setViewerStatus("Stream ended", "The camera device stopped streaming or disconnected.");
-              placeholder.classList.remove("hidden");
-              placeholder.innerHTML = `<div><strong>Stream ended</strong>Press Watch to reconnect.</div>`;
-              statusDot.classList.remove("live");
-              document.body.classList.remove("has-remote-controls");
-            });
-
-            viewerCall.on("error", (err) => {
-              setViewerStatus("Viewer error", err.message || "Viewer connection failed.");
-              log(`Viewer call error: ${err.message || err}`);
-            });
-
-            watchTimeout = setTimeout(() => {
-              if (!remoteStream) {
-                closeViewerConnection();
-                statusDot.classList.remove("live");
-                setViewerStatus("No active streamer found", "Start streaming on the other device first, wait until it says streaming active, then press Watch again on this PC.");
-                placeholder.classList.remove("hidden");
-                placeholder.innerHTML = `<div><strong>No active streamer found</strong>Start on the camera device first, then press Watch again.</div>`;
-              }
-            }, 14000);
-          });
-
-          viewerPeer.on("error", (err) => {
-            clearTimeout(watchTimeout);
-            statusDot.classList.remove("live");
-            const message = err?.type === "peer-unavailable"
-              ? "No active streamer found. Start streaming on the other device first, wait until it says streaming active, then press Watch again."
-              : (err.message || err.type || "Viewer peer error.");
-            setViewerStatus("Connection failed", message);
-            placeholder.classList.remove("hidden");
-            placeholder.innerHTML = `<div><strong>Connection failed</strong>${message}</div>`;
-            log(`Viewer peer error: ${message}`);
-          });
-        } catch (err) {
-          setViewerStatus("Connection failed", err.message);
-          log(`Watch error: ${err.message}`);
+        if (viewerData?.open) {
+          requestStreamFromStreamer();
+        } else {
+          setViewerStatus("Searching…", `Looking for an active streamer in room “${roomId}”…`);
+          placeholder.classList.remove("hidden");
+          placeholder.innerHTML = `<div><strong>Searching…</strong>Looking for the camera device. Will auto-connect when found.</div>`;
+          schedulePoll(0);
         }
       }
 
@@ -1261,7 +1443,8 @@
           stopStreaming(true, true);
           closeViewerConnection();
           setRoom(roomInput.value);
-          setViewerStatus("Ready", `Room changed to “${roomId}”. Start on the camera device, then press Watch here.`);
+          setViewerStatus("Ready", `Searching for streamer in room “${roomId}”… will auto-connect when found.`);
+          ensureViewerPeer();
         });
 
         copyLinkBtn.addEventListener("click", async () => {
@@ -1290,7 +1473,8 @@
           stopStreaming(true, true);
           closeViewerConnection();
           setRoom(getRoomId());
-          setViewerStatus("Ready", `Room changed to “${roomId}”. Start on the camera device, then press Watch here.`);
+          setViewerStatus("Ready", `Searching for streamer in room “${roomId}”… will auto-connect when found.`);
+          ensureViewerPeer();
         });
 
         window.addEventListener("resize", () => {
@@ -1314,8 +1498,10 @@
         updateClock();
         setInterval(updateClock, 250);
         loadCameras();
-        setViewerStatus("Ready", `Room “${roomId}” ready. Start on the camera device, wait until it says streaming active, then press Watch on this PC.`);
+        setViewerStatus("Ready", `Searching for an active streamer in room “${roomId}”… will auto-connect when one is found.`);
         log(peerReady() ? "UI ready. PeerJS loaded." : "UI ready, but PeerJS failed to load.");
+        // Start discovery immediately so this device sees Client 1 the moment it goes live.
+        ensureViewerPeer();
       }
 
       if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
