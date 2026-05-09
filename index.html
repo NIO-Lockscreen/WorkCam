@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Always-On Clock + Camera — Fixed</title>
+  <title>Always-On Clock + Camera — Black Screen Fix</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -312,19 +312,26 @@
       background: #000;
     }
 
-    .video-card:fullscreen video {
+    .video-card:fullscreen video,
+    .video-card:fullscreen #snapshotImg {
       width: 100vw;
       height: 100vh;
       object-fit: contain;
       background: #000;
     }
 
-    video {
+    video, #snapshotImg {
       width: 100%;
       height: 100%;
       object-fit: contain;
       display: block;
       background: #000;
+    }
+
+    #snapshotImg {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
     }
 
     .video-placeholder {
@@ -499,7 +506,8 @@
       background: #000;
     }
 
-    body.phone-viewer video {
+    body.phone-viewer video,
+    body.phone-viewer #snapshotImg {
       width: 100vw;
       height: 100dvh;
       object-fit: contain;
@@ -594,8 +602,9 @@
       </div>
 
       <div class="video-card viewer-only" id="videoCard">
-        <video id="remoteVideo" autoplay playsinline class="hidden"></video>
+        <video id="remoteVideo" autoplay playsinline muted class="hidden"></video>
         <video id="localVideo" autoplay muted playsinline class="hidden"></video>
+        <img id="snapshotImg" alt="Backup camera frame" class="hidden" />
         <button class="btn fs-exit" id="exitFullscreenBtn" type="button">Exit fullscreen</button>
         <div class="video-placeholder" id="placeholder">
           <div>
@@ -677,6 +686,7 @@
   const exitFullscreenBtn = $("exitFullscreenBtn");
   const localVideo = $("localVideo");
   const remoteVideo = $("remoteVideo");
+  const snapshotImg = $("snapshotImg");
   const placeholder = $("placeholder");
   const videoCard = $("videoCard");
   const connectionText = $("connectionText");
@@ -750,6 +760,9 @@
   let watchTimeout = null;
   let pollTimer = null;
   let probeTimeout = null;
+  let remoteRenderTimer = null;
+  let snapshotFallbackActive = false;
+  let snapshotTimers = new Map();
   let logHistory = [];
 
   function log(message) {
@@ -988,7 +1001,10 @@
 
   function cleanupViewerCall(showPlaceholder = true) {
     clearTimeout(watchTimeout);
+    clearTimeout(remoteRenderTimer);
     watchTimeout = null;
+    remoteRenderTimer = null;
+    hideSnapshotFallback();
     try { viewerCall?.close?.(); } catch {}
     viewerCall = null;
     remoteStream = null;
@@ -1009,6 +1025,8 @@
     watchTimeout = null;
     pollTimer = null;
     probeTimeout = null;
+    remoteRenderTimer = null;
+    hideSnapshotFallback();
     try { pendingProbe?.close?.(); } catch {}
     try { viewerData?.close?.(); } catch {}
     try { viewerCall?.close?.(); } catch {}
@@ -1032,24 +1050,188 @@
     controlConnections.clear();
     activeCalls.forEach((call) => { try { call.close(); } catch {} });
     activeCalls.clear();
+    snapshotTimers.forEach((timer) => clearInterval(timer));
+    snapshotTimers.clear();
     try { streamerPeer?.destroy?.(); } catch {}
     streamerPeer = null;
   }
 
+  function resetLocalVideoStyle() {
+    localVideo.style.opacity = "";
+    localVideo.style.position = "";
+    localVideo.style.inset = "";
+    localVideo.style.pointerEvents = "";
+    localVideo.style.zIndex = "";
+  }
+
+  function keepLocalCameraWarm() {
+    if (!localStream) return;
+    if (localVideo.srcObject !== localStream) localVideo.srcObject = localStream;
+    localVideo.muted = true;
+    localVideo.playsInline = true;
+    localVideo.play().catch((err) => log(`Local preview play warning: ${err.message || err}`));
+  }
+
+  function hideSnapshotFallback() {
+    snapshotFallbackActive = false;
+    snapshotImg.classList.add("hidden");
+    snapshotImg.removeAttribute("src");
+  }
+
+  function showSnapshotFrame(dataUrl) {
+    snapshotFallbackActive = true;
+    snapshotImg.src = dataUrl;
+    snapshotImg.classList.remove("hidden");
+    remoteVideo.classList.add("hidden");
+    localVideo.classList.add("hidden");
+    placeholder.classList.add("hidden");
+    statusDot.classList.add("live");
+    setViewerStatus("Watching live", "Remote camera connected using backup image mode.");
+  }
+
+  function stopSnapshotForConn(conn) {
+    const timer = snapshotTimers.get(conn);
+    if (timer) clearInterval(timer);
+    snapshotTimers.delete(conn);
+  }
+
+  function startSnapshotForConn(conn, options = {}) {
+    if (!conn?.open || !localStream) return;
+    stopSnapshotForConn(conn);
+    keepLocalCameraWarm();
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d", { alpha: false });
+    const fps = Math.max(1, Math.min(6, Number(options.fps || 3)));
+    const maxWidth = Math.max(320, Math.min(960, Number(options.width || 720)));
+
+    const sendFrame = () => {
+      try {
+        if (!conn.open || !localStream || !ctx) {
+          stopSnapshotForConn(conn);
+          return;
+        }
+        if (conn._dc?.bufferedAmount && conn._dc.bufferedAmount > 1400000) return;
+
+        const source = localVideo;
+        const sourceWidth = source.videoWidth || 0;
+        const sourceHeight = source.videoHeight || 0;
+        if (!sourceWidth || !sourceHeight || source.readyState < 2) {
+          keepLocalCameraWarm();
+          return;
+        }
+
+        const scale = Math.min(1, maxWidth / sourceWidth);
+        const w = Math.max(2, Math.round(sourceWidth * scale));
+        const h = Math.max(2, Math.round(sourceHeight * scale));
+        if (canvas.width !== w) canvas.width = w;
+        if (canvas.height !== h) canvas.height = h;
+        ctx.drawImage(source, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.58);
+        conn.send({ type: "snapshot", data: dataUrl, w, h, ts: Date.now() });
+      } catch (err) {
+        log(`Snapshot fallback failed: ${err.message || err}`);
+        stopSnapshotForConn(conn);
+      }
+    };
+
+    log(`Starting backup image stream to ${conn.peer}.`);
+    const timer = setInterval(sendFrame, Math.round(1000 / fps));
+    snapshotTimers.set(conn, timer);
+    sendFrame();
+  }
+
+  function requestSnapshotFallback(reason = "video did not render") {
+    if (snapshotFallbackActive) return;
+    log(`Requesting backup image mode: ${reason}`);
+    setViewerStatus("Trying backup view", "Video connected, but the picture was black. Switching to backup image mode…");
+
+    if (viewerData?.open) {
+      try {
+        viewerData.send({ type: "start-snapshot", fps: 3, width: 720 });
+        return;
+      } catch (err) {
+        log(`Could not request snapshot fallback: ${err.message || err}`);
+      }
+    }
+
+    connectControlChannel();
+    setTimeout(() => {
+      if (viewerData?.open && !snapshotFallbackActive) {
+        try { viewerData.send({ type: "start-snapshot", fps: 3, width: 720 }); } catch {}
+      }
+    }, 1200);
+  }
+
+  function watchRemoteVideoRendering(stream) {
+    clearTimeout(remoteRenderTimer);
+
+    const track = stream.getVideoTracks()[0];
+    log(`Remote video track state: ${track?.readyState || "none"}, muted: ${track?.muted ?? "unknown"}.`);
+
+    remoteVideo.onloadedmetadata = () => {
+      log(`Remote video metadata: ${remoteVideo.videoWidth || 0}x${remoteVideo.videoHeight || 0}.`);
+      if (remoteVideo.videoWidth && remoteVideo.videoHeight) {
+        setViewerStatus("Watching live", `Remote camera connected (${remoteVideo.videoWidth}×${remoteVideo.videoHeight}).`);
+      }
+    };
+
+    track?.addEventListener?.("mute", () => {
+      log("Remote video track muted.");
+      requestSnapshotFallback("remote video track muted");
+    });
+    track?.addEventListener?.("ended", () => log("Remote video track ended."));
+
+    let gotVideoFrame = false;
+    if ("requestVideoFrameCallback" in HTMLVideoElement.prototype) {
+      const countFrame = () => {
+        gotVideoFrame = true;
+        if (!remoteVideo.classList.contains("hidden")) {
+          remoteVideo.requestVideoFrameCallback(countFrame);
+        }
+      };
+      remoteVideo.requestVideoFrameCallback(countFrame);
+    } else {
+      gotVideoFrame = true;
+    }
+
+    remoteRenderTimer = setTimeout(() => {
+      if (snapshotFallbackActive || !remoteStream) return;
+      const noDimensions = !remoteVideo.videoWidth || !remoteVideo.videoHeight;
+      const notReady = remoteVideo.readyState < 2;
+      const noFrameCallback = "requestVideoFrameCallback" in HTMLVideoElement.prototype && !gotVideoFrame;
+      if (noDimensions || notReady || noFrameCallback || track?.muted) {
+        requestSnapshotFallback(`no rendered frame; readyState=${remoteVideo.readyState}, size=${remoteVideo.videoWidth || 0}x${remoteVideo.videoHeight || 0}`);
+      }
+    }, 4500);
+  }
+
   function updateLocalPreview() {
-    if (isBroadcasting && previewToggle.checked && localStream) {
+    if (!isBroadcasting) return;
+
+    // Keep the camera attached to a local video element even when preview is hidden.
+    // This avoids a common mobile/iOS problem where the WebRTC track stays connected
+    // but the actual camera frames pause, giving the viewer a black screen.
+    keepLocalCameraWarm();
+    hideSnapshotFallback();
+
+    if (previewToggle.checked && localStream) {
       document.body.classList.add("preview-on");
-      localVideo.srcObject = localStream;
+      resetLocalVideoStyle();
       localVideo.classList.remove("hidden");
       remoteVideo.classList.add("hidden");
       placeholder.classList.add("hidden");
-    } else if (isBroadcasting) {
+    } else {
       document.body.classList.remove("preview-on");
-      localVideo.srcObject = null;
-      localVideo.classList.add("hidden");
+      localVideo.classList.remove("hidden");
+      localVideo.style.opacity = "0.001";
+      localVideo.style.position = "absolute";
+      localVideo.style.inset = "0";
+      localVideo.style.pointerEvents = "none";
+      localVideo.style.zIndex = "0";
       remoteVideo.classList.add("hidden");
       placeholder.classList.remove("hidden");
-      placeholder.innerHTML = `<div><strong>Streaming active</strong>Preview is hidden on this camera device.</div>`;
+      placeholder.innerHTML = `<div><strong>Streaming active</strong>Preview is hidden, but the camera is kept awake for viewers.</div>`;
     }
   }
 
@@ -1109,6 +1291,7 @@
     try {
       activeDeviceId = cameraSelect.value || "";
       localStream = await getCameraStream(activeDeviceId);
+      keepLocalCameraWarm();
 
       if (!activeDeviceId && localStream.getVideoTracks()[0]?.getSettings?.().deviceId) {
         activeDeviceId = localStream.getVideoTracks()[0].getSettings().deviceId;
@@ -1186,17 +1369,21 @@
           if (!data || typeof data !== "object") return;
           if (data.type === "switch-camera") switchStreamerCamera(data.deviceId || "");
           if (data.type === "request-cameras") sendCameraList();
+          if (data.type === "start-snapshot") startSnapshotForConn(conn, data);
+          if (data.type === "stop-snapshot") stopSnapshotForConn(conn);
           if (data.type === "ping") {
             try { if (conn.open) conn.send({ type: "pong", live: true }); } catch {}
           }
         });
 
         conn.on("close", () => {
+          stopSnapshotForConn(conn);
           controlConnections.delete(conn);
           log(`Viewer control disconnected: ${conn.peer}`);
         });
 
         conn.on("error", (err) => {
+          stopSnapshotForConn(conn);
           controlConnections.delete(conn);
           log(`Control connection error from ${conn.peer}: ${err.message || err}`);
         });
@@ -1231,6 +1418,7 @@
     fullscreenBtn.classList.remove("hidden");
     stopBtn.classList.add("hidden");
     localVideo.srcObject = null;
+    resetLocalVideoStyle();
     localVideo.classList.add("hidden");
     updateLiveBadge();
 
@@ -1378,6 +1566,7 @@
       if (!data || typeof data !== "object") return;
       if (data.type === "cameras") renderRemoteCameras(data.cameras, data.activeDeviceId);
       if (data.type === "status") remoteCameraText.textContent = data.text || remoteCameraText.textContent;
+      if (data.type === "snapshot") showSnapshotFrame(data.data);
       if (data.type === "pong") {
         isStreamerLive = true;
         updateLiveBadge();
@@ -1456,14 +1645,19 @@
       watchTimeout = null;
       remoteStream = stream;
       isStreamerLive = true;
+      hideSnapshotFallback();
+      resetLocalVideoStyle();
       updateLiveBadge();
       log(`Remote stream received (${stream.getVideoTracks().length} video track${stream.getVideoTracks().length === 1 ? "" : "s"}).`);
+      remoteVideo.muted = true;
+      remoteVideo.playsInline = true;
       remoteVideo.srcObject = stream;
       remoteVideo.classList.remove("hidden");
       localVideo.classList.add("hidden");
       placeholder.classList.add("hidden");
       remoteVideo.play().catch((e) => log(`remoteVideo.play warning: ${e.message || e}`));
-      setViewerStatus("Watching live", "Remote camera connected.");
+      setViewerStatus("Watching live", "Remote camera connected. Checking video frames…");
+      watchRemoteVideoRendering(stream);
       if (!viewerData?.open) connectControlChannel();
     });
 
@@ -1474,6 +1668,8 @@
       remoteVideo.srcObject = null;
       remoteVideo.classList.add("hidden");
       stopViewerOfferStream();
+      hideSnapshotFallback();
+      if (viewerData?.open) { try { viewerData.send({ type: "stop-snapshot" }); } catch {} }
       placeholder.classList.remove("hidden");
       placeholder.innerHTML = `<div><strong>Stream ended</strong>Waiting for the camera device to come back…</div>`;
       setViewerStatus("Stream ended", "Waiting for the camera device to come back…");
@@ -1514,6 +1710,7 @@
   function getActiveVideo() {
     if (!remoteVideo.classList.contains("hidden")) return remoteVideo;
     if (!localVideo.classList.contains("hidden")) return localVideo;
+    if (!snapshotImg.classList.contains("hidden")) return snapshotImg;
     return null;
   }
 
@@ -1524,7 +1721,7 @@
       return;
     }
     try {
-      await activeVideo.play().catch(() => {});
+      if (typeof activeVideo.play === "function") await activeVideo.play().catch(() => {});
       if (videoCard.requestFullscreen) await videoCard.requestFullscreen({ navigationUI: "hide" });
       else if (activeVideo.webkitEnterFullscreen) activeVideo.webkitEnterFullscreen();
       if (isPhoneViewer() && screen.orientation?.lock) await screen.orientation.lock("landscape").catch(() => {});
@@ -1634,7 +1831,7 @@
     loadCameras();
     if (roomLabel) roomLabel.textContent = "○ Searching for streamer…";
     setViewerStatus("Ready", "Searching for a streamer… will auto-connect when one starts.");
-    log(peerReady() ? "UI ready. PeerJS loaded. New flow: viewer calls streamer directly." : "UI ready, but PeerJS failed to load.");
+    log(peerReady() ? "UI ready. PeerJS loaded. Black-screen fix active: local camera stays awake + backup image mode." : "UI ready, but PeerJS failed to load.");
     ensureViewerPeer();
   }
 
