@@ -574,7 +574,7 @@
           <span>Compatibility mode for car/capture cameras</span>
           <input id="compatToggle" type="checkbox" checked />
         </label>
-        <p>This sends a live canvas-captured WebRTC stream from the working preview, which avoids the black encoded-camera-track bug.</p>
+        <p>This sends a manually requested canvas WebRTC stream from the working preview. It forces every frame with requestFrame(), which helps embedded car/capture browsers that connect but send black video.</p>
       </div>
 
       <div class="video-card" id="videoCard">
@@ -715,6 +715,8 @@
       let canvas = null;
       let canvasCtx = null;
       let drawRaf = null;
+      let drawTimer = null;
+      let canvasCaptureTrack = null;
       let localCameras = [];
       let activeDeviceId = "";
       let cameraReadyTimer = null;
@@ -880,7 +882,7 @@
 
         channel.subscribe("signal", (message) => handleSignal(message.data));
         signalReady = true;
-        roomLabel.textContent = `Direct room: ${ROOM_ID}`;
+        roomLabel.textContent = `Direct room: ${ROOM_ID} · V6 manual canvas`;
         log(`Signaling ready as ${CLIENT_ID}`);
       }
 
@@ -974,10 +976,11 @@
           return localStream;
         }
 
-        // Important for car/capture browsers:
-        // draw from the SAME visible preview that you already confirmed works,
-        // not from a hidden/offscreen video element. Some embedded browsers
-        // happily show the preview but return black frames from an offscreen video.
+        // V6: manual canvas frames.
+        // Some embedded/car browsers produce a valid WebRTC connection but never
+        // push frames from canvas.captureStream(fps). captureStream(0) +
+        // CanvasCaptureMediaStreamTrack.requestFrame() is more reliable because
+        // we explicitly request every video frame after drawing it.
         await localVideo.play().catch(() => {});
         await waitForVideoReady(localVideo);
 
@@ -985,7 +988,7 @@
         const settings = track?.getSettings?.() || {};
         const sourceWidth = localVideo.videoWidth || settings.width || 1280;
         const sourceHeight = localVideo.videoHeight || settings.height || 720;
-        const maxWidth = 1280;
+        const maxWidth = 960;
         const scale = Math.min(1, maxWidth / sourceWidth);
         const width = Math.max(320, Math.round(sourceWidth * scale));
         const height = Math.max(180, Math.round(sourceHeight * scale));
@@ -994,51 +997,65 @@
         canvas.width = width;
         canvas.height = height;
         canvas.classList.remove("hidden");
-        canvasCtx = canvas.getContext("2d", { alpha: false, desynchronized: false });
+        canvasCtx = canvas.getContext("2d", { alpha: false, willReadFrequently: false });
+
+        const fps = Number(fpsSelect.value) || 15;
+        const stream = canvas.captureStream(0);
+        canvasCaptureTrack = stream.getVideoTracks()[0] || null;
+        if (canvasCaptureTrack) canvasCaptureTrack.contentHint = "motion";
 
         let frameNo = 0;
-        function draw() {
-          if (!localStream || !canvasCtx) return;
+        let lastCameraDrawOk = false;
+
+        function drawOneFrame() {
+          if (!localStream || !canvasCtx || !canvas) return;
           frameNo += 1;
           try {
-            canvasCtx.fillStyle = "#000";
+            canvasCtx.fillStyle = "#050711";
             canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
 
-            if (localVideo.readyState >= 2 && localVideo.videoWidth > 0) {
+            lastCameraDrawOk = false;
+            if (localVideo.readyState >= 2 && localVideo.videoWidth > 0 && localVideo.videoHeight > 0) {
               canvasCtx.drawImage(localVideo, 0, 0, canvas.width, canvas.height);
-            } else {
-              canvasCtx.fillStyle = "#111827";
-              canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+              lastCameraDrawOk = true;
             }
 
-            // Diagnostic overlay. If the viewer sees this but not the camera,
-            // WebRTC works and only the camera draw is black. If viewer sees
-            // pure black with no text, captureStream/encoding is the problem.
-            canvasCtx.fillStyle = "rgba(0,0,0,0.55)";
-            canvasCtx.fillRect(12, 12, Math.min(canvas.width - 24, 540), 74);
-            canvasCtx.fillStyle = "#ffffff";
-            canvasCtx.font = "24px system-ui, -apple-system, Segoe UI, sans-serif";
-            canvasCtx.fillText("V5 canvas live feed", 28, 42);
-            canvasCtx.font = "17px system-ui, -apple-system, Segoe UI, sans-serif";
-            canvasCtx.fillText(`${new Date().toLocaleTimeString()} · frame ${frameNo}`, 28, 70);
+            // Big bright diagnostic overlay. If the viewer sees this, WebRTC and
+            // canvas streaming work. If the viewer sees pure black, the browser is
+            // not sending encoded canvas frames at all.
+            canvasCtx.fillStyle = "rgba(255,255,255,0.92)";
+            canvasCtx.fillRect(18, 18, Math.min(canvas.width - 36, 620), 104);
+            canvasCtx.fillStyle = "#07111f";
+            canvasCtx.font = "bold 28px system-ui, -apple-system, Segoe UI, sans-serif";
+            canvasCtx.fillText("V6 MANUAL CANVAS LIVE", 36, 56);
+            canvasCtx.font = "20px system-ui, -apple-system, Segoe UI, sans-serif";
+            canvasCtx.fillText(`${new Date().toLocaleTimeString()} · frame ${frameNo}`, 36, 86);
+            canvasCtx.fillText(lastCameraDrawOk ? "camera draw: OK" : "camera draw: waiting", 36, 112);
+
+            // Force delivery of this exact drawn frame.
+            if (canvasCaptureTrack && typeof canvasCaptureTrack.requestFrame === "function") {
+              canvasCaptureTrack.requestFrame();
+            }
           } catch (err) {
             log(`Canvas draw warning: ${err.message || err}`);
           }
-          drawRaf = requestAnimationFrame(draw);
         }
-        draw();
 
-        const fps = Number(fpsSelect.value) || 20;
-        const stream = canvas.captureStream(fps);
-        const outTrack = stream.getVideoTracks()[0];
-        if (outTrack) outTrack.contentHint = "motion";
-        log(`Using V5 visible-preview canvas WebRTC stream: ${width}x${height} @ ${fps}fps.`);
+        // Draw a few frames immediately before the viewer can receive the track.
+        drawOneFrame();
+        drawOneFrame();
+        drawTimer = setInterval(drawOneFrame, Math.max(66, Math.round(1000 / fps)));
+
+        log(`Using V6 manual requestFrame canvas WebRTC stream: ${width}x${height} @ ${fps}fps.`);
         return stream;
       }
 
       function stopCanvasPump() {
         if (drawRaf) cancelAnimationFrame(drawRaf);
         drawRaf = null;
+        if (drawTimer) clearInterval(drawTimer);
+        drawTimer = null;
+        canvasCaptureTrack = null;
         streamCanvas.classList.add("hidden");
         canvas = null;
         canvasCtx = null;
@@ -1423,7 +1440,7 @@
         updateClock();
         setInterval(updateClock, 250);
         await loadCameras();
-        roomLabel.textContent = `Direct room: ${ROOM_ID}`;
+        roomLabel.textContent = `Direct room: ${ROOM_ID} · V6 manual canvas`;
         log("UI ready. Direct WebRTC + Ably signaling. V4 authUrl token fix. No PeerJS. No Blob video.");
       }
 
