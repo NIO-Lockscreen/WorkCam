@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Direct Camera Feed V9 TURN</title>
+  <title>Direct Camera Feed V10 TURN Track Fix</title>
   <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
   <style>
     :root { color-scheme: dark; --bg:#060814; --panel:#151823; --line:#303545; --text:#f4f6ff; --muted:#aeb3c4; --ok:#50e487; --bad:#ff6b6b; }
@@ -16,9 +16,9 @@
 </head>
 <body>
 <main class="app">
-  <section class="stage"><div class="small" id="roomLabel">Direct room: td-clockcam-direct-room · V9 TURN live WebRTC</div><div class="clock" id="clock">12<br>00</div></section>
+  <section class="stage"><div class="small" id="roomLabel">Direct room: td-clockcam-direct-room · V10 TURN addTrack fix</div><div class="clock" id="clock">12<br>00</div></section>
   <aside class="side">
-    <div><h1>Direct Live View</h1><p id="sub">Raw camera WebRTC with Ably signaling + optional TURN relay. No PeerJS, Blob, Redis or JPEG engine.</p></div>
+    <div><h1>Direct Live View</h1><p id="sub">Raw camera WebRTC with Ably signaling + TURN relay. V10 uses addTrack, matching normal video-call apps more closely.</p></div>
     <div class="card"><div class="status"><span id="dot" class="dot"></span><span id="statusTitle">Starting…</span></div><p id="statusText">Loading.</p></div>
     <div class="videoBox" id="videoBox"><video id="remoteVideo" autoplay playsinline muted></video><video id="localVideo" autoplay playsinline muted class="hide"></video><div id="placeholder" class="placeholder"><div><b>No live feed yet</b><br>Start camera on one device. Press Watch on the other.</div></div></div>
     <div class="card">
@@ -42,6 +42,7 @@
   let ably, channel, localStream, pc, role='idle', cameraClientId=null, statsTimer=null, iceConfig=null, pendingCandidates=[];
   let iceServers = [{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}];
   let turnAvailable = false;
+  installRemoteVideoDebug();
   function log(s){ const t=new Date().toLocaleTimeString(); console.log('[v9]',s); logEl.textContent += `[${t}] ${s}\n`; logEl.scrollTop=logEl.scrollHeight; }
   function setStatus(title,text,live=false){ statusTitle.textContent=title; statusText.textContent=text; dot.classList.toggle('ok',!!live); }
   function send(type, data={}, to='all'){ channel.publish('signal',{ type, from:clientId, to, room:ROOM, ...data }); }
@@ -87,6 +88,35 @@
     const primary = caps.codecs.filter(c => c.mimeType.toUpperCase().includes(wanted));
     const rest = caps.codecs.filter(c => !c.mimeType.toUpperCase().includes(wanted));
     if (primary.length) { transceiver.setCodecPreferences([...primary, ...rest]); log('Codec preference set: '+wanted); }
+  }
+
+  function preferCodecsOnPc(p){
+    try{
+      for (const tr of p.getTransceivers()) {
+        if (tr.sender?.track?.kind === 'video' || tr.receiver?.track?.kind === 'video') preferCodecs(tr);
+      }
+    }catch(e){ log('preferCodecsOnPc warning: '+(e.message||e)); }
+  }
+
+  function attachRemoteStream(stream, reason){
+    log('attachRemoteStream: '+reason+' tracks='+stream.getTracks().map(t=>t.kind+':'+t.readyState+':muted='+t.muted).join(','));
+    remoteVideo.srcObject = stream;
+    remoteVideo.muted = true;
+    remoteVideo.playsInline = true;
+    remoteVideo.autoplay = true;
+    remoteVideo.classList.remove('hide');
+    localVideo.classList.add('hide');
+    placeholder.classList.add('hide');
+    const p = remoteVideo.play();
+    if (p && typeof p.then === 'function') p.then(()=>log('remoteVideo.play OK')).catch(err=>log('remoteVideo.play failed: '+(err.message||err)));
+    startStats();
+  }
+
+  function installRemoteVideoDebug(){
+    remoteVideo.onloadedmetadata = () => log('remoteVideo loadedmetadata: '+remoteVideo.videoWidth+'x'+remoteVideo.videoHeight);
+    remoteVideo.onresize = () => log('remoteVideo resize: '+remoteVideo.videoWidth+'x'+remoteVideo.videoHeight);
+    remoteVideo.onplaying = () => log('remoteVideo playing');
+    remoteVideo.onerror = () => log('remoteVideo error: '+(remoteVideo.error?.message || remoteVideo.error?.code || 'unknown'));
   }
 
   function newPc(){
@@ -142,14 +172,12 @@
       log('Found camera: '+cameraClientId);
       const p = newPc();
       p.ontrack = ev => {
-        log('ontrack: streams='+ev.streams.length+' track='+ev.track.kind+' state='+ev.track.readyState);
+        log('ontrack: streams='+ev.streams.length+' track='+ev.track.kind+' state='+ev.track.readyState+' muted='+ev.track.muted);
         const stream = ev.streams[0] || new MediaStream([ev.track]);
-        remoteVideo.srcObject = stream;
-        remoteVideo.muted = true;
-        remoteVideo.playsInline = true;
-        remoteVideo.classList.remove('hide'); placeholder.classList.add('hide');
-        remoteVideo.play().then(()=>log('remoteVideo.play OK')).catch(err=>log('remoteVideo.play failed: '+(err.message||err)));
-        startStats();
+        ev.track.onunmute = () => { log('remote track unmuted'); attachRemoteStream(stream, 'track unmuted'); };
+        ev.track.onmute = () => log('remote track muted');
+        ev.track.onended = () => log('remote track ended');
+        attachRemoteStream(stream, 'ontrack');
       };
       const transceiver = p.addTransceiver('video',{direction:'recvonly'}); preferCodecs(transceiver);
       p.onicecandidate = e => { if(e.candidate) send('candidate',{candidate:e.candidate}, cameraClientId); };
@@ -169,7 +197,13 @@
         log('Offer received from '+d.from); cameraClientId=d.from;
         const p=newPc();
         if(!localStream) throw new Error('Camera not started');
-        for(const track of localStream.getVideoTracks()) { const tr=p.addTransceiver(track,{direction:'sendonly', streams:[localStream]}); preferCodecs(tr); }
+        // V10 fix: use addTrack instead of addTransceiver(track). Embedded browsers often
+        // connect ICE correctly but fail to send media when the track is added as a transceiver.
+        for(const track of localStream.getVideoTracks()) {
+          p.addTrack(track, localStream);
+          log('Camera added video track with addTrack: '+track.label+' settings='+JSON.stringify(track.getSettings?.()||{}));
+        }
+        preferCodecsOnPc(p);
         p.onicecandidate=e=>{ if(e.candidate) send('candidate',{candidate:e.candidate},d.from); };
         await p.setRemoteDescription(d.sdp);
         const answer=await p.createAnswer();
@@ -188,8 +222,9 @@
     statsTimer=setInterval(async()=>{
       if(!pc) return;
       const stats=await pc.getStats();
-      let text='Stats: ';
-      stats.forEach(r=>{ if(r.type==='inbound-rtp' && r.kind==='video'){ text += `framesDecoded=${r.framesDecoded||0} fps=${r.framesPerSecond||0} bytes=${r.bytesReceived||0} packetsLost=${r.packetsLost||0}`; if((r.framesDecoded||0)>lastFrames) placeholder.classList.add('hide'); lastFrames=r.framesDecoded||0; } });
+      let text='Stats: '; let found=false;
+      stats.forEach(r=>{ if(r.type==='inbound-rtp' && r.kind==='video'){ found=true; text += `framesDecoded=${r.framesDecoded||0} fps=${r.framesPerSecond||0} bytes=${r.bytesReceived||0} packetsLost=${r.packetsLost||0} video=${remoteVideo.videoWidth}x${remoteVideo.videoHeight}`; if((r.framesDecoded||0)>lastFrames) placeholder.classList.add('hide'); lastFrames=r.framesDecoded||0; } });
+      if(!found) text += 'connected but no inbound video RTP yet';
       statsEl.textContent=text;
     },1000);
   }
