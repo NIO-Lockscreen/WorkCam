@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Direct Camera Feed V8</title>
+  <title>Direct Camera Feed V9 TURN</title>
   <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
   <style>
     :root { color-scheme: dark; --bg:#060814; --panel:#151823; --line:#303545; --text:#f4f6ff; --muted:#aeb3c4; --ok:#50e487; --bad:#ff6b6b; }
@@ -16,13 +16,15 @@
 </head>
 <body>
 <main class="app">
-  <section class="stage"><div class="small" id="roomLabel">Direct room: td-clockcam-direct-room · V8 Discord-style raw WebRTC</div><div class="clock" id="clock">12<br>00</div></section>
+  <section class="stage"><div class="small" id="roomLabel">Direct room: td-clockcam-direct-room · V9 TURN live WebRTC</div><div class="clock" id="clock">12<br>00</div></section>
   <aside class="side">
-    <div><h1>Direct Live View</h1><p id="sub">Raw camera WebRTC with Ably signaling. No PeerJS, Blob, Redis or JPEG engine.</p></div>
+    <div><h1>Direct Live View</h1><p id="sub">Raw camera WebRTC with Ably signaling + optional TURN relay. No PeerJS, Blob, Redis or JPEG engine.</p></div>
     <div class="card"><div class="status"><span id="dot" class="dot"></span><span id="statusTitle">Starting…</span></div><p id="statusText">Loading.</p></div>
     <div class="videoBox" id="videoBox"><video id="remoteVideo" autoplay playsinline muted></video><video id="localVideo" autoplay playsinline muted class="hide"></video><div id="placeholder" class="placeholder"><div><b>No live feed yet</b><br>Start camera on one device. Press Watch on the other.</div></div></div>
     <div class="card">
       <label>Codec preference<select id="codecSelect"><option value="h264">H.264 first — Discord-style/default</option><option value="vp8">VP8 first</option><option value="default">Browser default</option></select></label>
+      <label>Connection mode<select id="policySelect"><option value="all">Auto: direct first, TURN if needed</option><option value="relay">Force TURN relay</option></select></label>
+      <p class="stat" id="iceInfo">ICE: loading…</p>
       <p class="stat" id="stats">Stats: idle</p>
     </div>
     <div class="actions"><button class="btn primary" id="startBtn">Start camera</button><button class="btn" id="watchBtn">Watch</button><button class="btn" id="fullBtn">Fullscreen</button><button class="btn danger" id="stopBtn">Stop</button></div>
@@ -35,15 +37,35 @@
   const ROOM = 'td-clockcam-direct-room';
   const CHANNEL = 'clockcam:' + ROOM;
   const $ = id => document.getElementById(id);
-  const localVideo=$('localVideo'), remoteVideo=$('remoteVideo'), placeholder=$('placeholder'), dot=$('dot'), statusTitle=$('statusTitle'), statusText=$('statusText'), logEl=$('log'), codecSelect=$('codecSelect'), statsEl=$('stats');
-  const clientId = 'v8-' + Math.random().toString(36).slice(2,8) + '-' + Date.now().toString(36);
-  let ably, channel, localStream, pc, role='idle', cameraClientId=null, statsTimer=null;
-  const iceServers = [{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}];
-  function log(s){ const t=new Date().toLocaleTimeString(); console.log('[v8]',s); logEl.textContent += `[${t}] ${s}\n`; logEl.scrollTop=logEl.scrollHeight; }
+  const localVideo=$('localVideo'), remoteVideo=$('remoteVideo'), placeholder=$('placeholder'), dot=$('dot'), statusTitle=$('statusTitle'), statusText=$('statusText'), logEl=$('log'), codecSelect=$('codecSelect'), policySelect=$('policySelect'), iceInfo=$('iceInfo'), statsEl=$('stats');
+  const clientId = 'v9-' + Math.random().toString(36).slice(2,8) + '-' + Date.now().toString(36);
+  let ably, channel, localStream, pc, role='idle', cameraClientId=null, statsTimer=null, iceConfig=null, pendingCandidates=[];
+  let iceServers = [{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}];
+  let turnAvailable = false;
+  function log(s){ const t=new Date().toLocaleTimeString(); console.log('[v9]',s); logEl.textContent += `[${t}] ${s}\n`; logEl.scrollTop=logEl.scrollHeight; }
   function setStatus(title,text,live=false){ statusTitle.textContent=title; statusText.textContent=text; dot.classList.toggle('ok',!!live); }
   function send(type, data={}, to='all'){ channel.publish('signal',{ type, from:clientId, to, room:ROOM, ...data }); }
   function updateClock(){ const n=new Date(); $('clock').innerHTML=String(n.getHours()).padStart(2,'0')+'<br>'+String(n.getMinutes()).padStart(2,'0'); }
   setInterval(updateClock,1000); updateClock();
+
+
+
+  async function loadIceConfig(){
+    try{
+      const res = await fetch('/api/ice', {cache:'no-store'});
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Could not load ICE config');
+      iceServers = data.iceServers || iceServers;
+      turnAvailable = !!data.turnAvailable;
+      iceInfo.textContent = turnAvailable
+        ? 'ICE: TURN configured. Use Auto first; Force TURN if connection fails.'
+        : 'ICE: STUN only. If connectionState fails, add TURN env vars in Vercel.';
+      log('ICE loaded: '+JSON.stringify(data.publicSummary || {}));
+    }catch(e){
+      iceInfo.textContent = 'ICE: failed to load /api/ice, using STUN only. '+(e.message||e);
+      log('ICE config load failed: '+(e.message||e));
+    }
+  }
 
   async function connectAbly(){
     setStatus('Connecting…','Connecting to Ably signaling.');
@@ -51,7 +73,7 @@
     channel = ably.channels.get(CHANNEL);
     await new Promise((resolve,reject)=>{ const to=setTimeout(()=>reject(new Error('Ably connect timeout')),45000); ably.connection.once('connected',()=>{clearTimeout(to);resolve();}); ably.connection.once('failed',e=>{clearTimeout(to);reject(e.reason||new Error('Ably failed'));}); });
     await channel.subscribe('signal', onSignal);
-    await channel.presence.enter({role:'idle', v:'8', clientId});
+    await channel.presence.enter({role:'idle', v:'9', clientId});
     setStatus('Ready','Connected to realtime signaling.');
     log('Ably connected as '+clientId);
   }
@@ -69,9 +91,27 @@
 
   function newPc(){
     if (pc) try{pc.close()}catch{}
-    pc = new RTCPeerConnection({iceServers});
-    pc.onicecandidate = e => { if(e.candidate) send('candidate',{candidate:e.candidate}, cameraClientId || 'all'); };
-    pc.onconnectionstatechange = () => { log('pc connectionState: '+pc.connectionState); if(pc.connectionState==='connected') setStatus(role==='camera'?'Camera online':'Watching live', role==='camera'?'Viewer connected.':'Direct camera connected.', true); };
+    pendingCandidates = [];
+    const policy = policySelect.value === 'relay' ? 'relay' : 'all';
+    if(policy === 'relay' && !turnAvailable) log('Force TURN selected, but no TURN server is configured. This will likely fail.');
+    pc = new RTCPeerConnection({iceServers, iceTransportPolicy: policy});
+    log('RTCPeerConnection created. iceTransportPolicy='+policy+' servers='+iceServers.map(s=>Array.isArray(s.urls)?s.urls.join('|'):s.urls).join(', '));
+    pc.onicecandidate = e => {
+      if(e.candidate) {
+        log('local ICE: '+e.candidate.candidate);
+        send('candidate',{candidate:e.candidate}, cameraClientId || 'all');
+      } else {
+        log('ICE gathering complete');
+      }
+    };
+    pc.onconnectionstatechange = () => {
+      log('pc connectionState: '+pc.connectionState);
+      if(pc.connectionState==='connected') setStatus(role==='camera'?'Camera online':'Watching live', role==='camera'?'Viewer connected.':'Direct camera connected.', true);
+      if(pc.connectionState==='failed' && policySelect.value !== 'relay' && turnAvailable && role === 'viewer'){
+        log('Connection failed in Auto mode. Switch to Force TURN relay and press Watch again.');
+        setStatus('Connection failed','Switch Connection mode to Force TURN relay and press Watch again.');
+      }
+    };
     pc.oniceconnectionstatechange = () => log('iceConnectionState: '+pc.iceConnectionState);
     pc.onsignalingstatechange = () => log('signalingState: '+pc.signalingState);
     return pc;
@@ -83,7 +123,7 @@
       setStatus('Opening camera…','Requesting camera permission.');
       localStream = await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30}}, audio:false});
       localVideo.srcObject=localStream; localVideo.classList.remove('hide'); remoteVideo.classList.add('hide'); placeholder.classList.add('hide');
-      await channel.presence.update({role:'camera', v:'8', clientId});
+      await channel.presence.update({role:'camera', v:'9', clientId});
       send('camera-online',{codec:codecSelect.value});
       setStatus('Camera online','Camera preview works. Waiting for viewer offer.',true);
       log('Camera started. Track settings: '+JSON.stringify(localStream.getVideoTracks()[0].getSettings?.()||{}));
@@ -137,8 +177,8 @@
         send('answer',{sdp:p.localDescription},d.from);
         setStatus('Camera online','Answer sent. Connecting viewer…',true);
       }
-      if(d.type==='answer' && role==='viewer' && pc){ log('Answer received'); await pc.setRemoteDescription(d.sdp); }
-      if(d.type==='candidate' && pc && d.candidate){ await pc.addIceCandidate(d.candidate).catch(e=>log('addIceCandidate warning: '+(e.message||e))); }
+      if(d.type==='answer' && role==='viewer' && pc){ log('Answer received'); await pc.setRemoteDescription(d.sdp); for(const c of pendingCandidates.splice(0)) await pc.addIceCandidate(c).catch(e=>log('queued addIceCandidate warning: '+(e.message||e))); }
+      if(d.type==='candidate' && pc && d.candidate){ const cand = d.candidate; log('remote ICE: '+(cand.candidate||'')); if(pc.remoteDescription) await pc.addIceCandidate(cand).catch(e=>log('addIceCandidate warning: '+(e.message||e))); else { pendingCandidates.push(cand); log('queued remote ICE until remoteDescription is set'); } }
     }catch(e){ log('Signal handler error: '+(e.message||e)); setStatus('Signal error',e.message||String(e)); }
   }
 
@@ -158,12 +198,12 @@
     try{pc?.close()}catch{} pc=null; clearInterval(statsTimer);
     if(localStream){localStream.getTracks().forEach(t=>t.stop()); localStream=null;}
     localVideo.srcObject=null; remoteVideo.srcObject=null; localVideo.classList.add('hide'); remoteVideo.classList.remove('hide'); placeholder.classList.remove('hide');
-    role='idle'; cameraClientId=null; if(channel) channel.presence.update({role:'idle',v:'8',clientId}).catch(()=>{});
+    role='idle'; cameraClientId=null; if(channel) channel.presence.update({role:'idle',v:'9',clientId}).catch(()=>{});
     setStatus('Ready','Stopped.'); statsEl.textContent='Stats: idle';
   }
 
   $('startBtn').onclick=startCamera; $('watchBtn').onclick=watch; $('stopBtn').onclick=stop; $('fullBtn').onclick=()=>{ const el=$('videoBox'); if(el.requestFullscreen) el.requestFullscreen(); else remoteVideo.webkitEnterFullscreen?.(); };
-  connectAbly().catch(e=>{ alert('Could not connect signaling: '+(e.message||e)); setStatus('Signaling failed',e.message||String(e)); log('Ably failed '+(e.message||e)); });
+  loadIceConfig().then(connectAbly).catch(e=>{ alert('Could not connect signaling: '+(e.message||e)); setStatus('Signaling failed',e.message||String(e)); log('Ably failed '+(e.message||e)); });
 })();
 </script>
 </body>

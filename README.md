@@ -1,44 +1,51 @@
-# Direct WebRTC Camera Feed for Vercel
+# V9 Direct WebRTC + Ably signaling + TURN config
 
-This version uses:
+This version keeps the actual camera feed as direct WebRTC video. Ably is only used for signaling.
 
-- Vercel for hosting the page and creating short-lived Ably auth tokens.
-- Ably for tiny realtime signaling messages only.
-- WebRTC for the actual live video.
-- A canvas-captured outgoing stream by default, so car/capture cameras that preview correctly but render black through raw WebRTC tracks usually work.
-
-It does not use PeerJS, Redis, or Vercel Blob for video.
-
-## Setup
-
-1. Create a free Ably account and app.
-2. Copy the Ably API key.
-3. In Vercel Project Settings > Environment Variables, add:
+Your previous log showed:
 
 ```txt
-ABLY_API_KEY=your_ably_api_key_here
+pc connectionState: connecting
+iceConnectionState: disconnected
+pc connectionState: failed
 ```
 
-4. Deploy this folder to Vercel.
-5. Open the deployed URL on the camera device and press **Start camera**.
-6. Open the same URL on the viewer device and press **Watch**.
+That means the two browsers could signal, but they could not find a usable WebRTC network route. Discord works because Discord has its own ICE/TURN infrastructure. This project lets you add your own TURN relay.
 
-## Room names
-
-Default room:
+## Files
 
 ```txt
-td-clockcam-direct-room
+index.html
+package.json
+vercel.json
+api/ably-token.js
+api/ice.js
 ```
 
-Use a custom room like this:
+## Required Vercel env var
 
 ```txt
-https://your-site.vercel.app/?room=kitchen
+ABLY_API_KEY=your_ably_api_key
 ```
 
-Both devices must use the same room URL.
+## Strongly recommended TURN env vars
 
-## Notes
+Use any TURN provider. Add these in Vercel Project Settings → Environment Variables:
 
-Vercel Functions do not act as WebSocket servers, so a realtime signaling provider is used. The live video does not pass through Ably or Vercel; only small SDP/ICE signaling messages do.
+```txt
+TURN_URLS=turn:your-turn-host:3478,turns:your-turn-host:5349
+TURN_USERNAME=your-turn-username
+TURN_CREDENTIAL=your-turn-password
+```
+
+Then redeploy.
+
+## Test
+
+1. Open the app on the car screen.
+2. Press Start camera.
+3. Open the app on client 2.
+4. Press Watch.
+5. If Auto fails, set Connection mode to Force TURN relay and press Watch again.
+
+If Force TURN relay works, keep that mode for the car setup.
