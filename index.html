@@ -3,25 +3,27 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Direct Camera Feed V10 TURN Track Fix</title>
+  <title>Direct Camera Feed V11 Camera Select</title>
   <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
   <style>
     :root { color-scheme: dark; --bg:#060814; --panel:#151823; --line:#303545; --text:#f4f6ff; --muted:#aeb3c4; --ok:#50e487; --bad:#ff6b6b; }
     *{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 20% 0%,#1d2542,#060814 45%);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;min-height:100dvh;padding:18px;overflow:hidden}
     .app{height:calc(100dvh - 36px);display:grid;grid-template-columns:1fr 420px;gap:18px}.stage,.side{border:1px solid var(--line);background:rgba(21,24,35,.76);border-radius:28px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.35)}
     .stage{position:relative;display:grid;place-items:center}.clock{position:absolute;left:7vw;top:8vh;font-size:clamp(7rem,20vw,19rem);font-weight:200;line-height:.82;letter-spacing:-.08em;color:#eef0ff;text-shadow:0 12px 60px rgba(170,190,255,.25);z-index:1}.small{position:absolute;left:24px;top:18px;color:var(--muted);z-index:2}.side{padding:18px;display:grid;grid-template-rows:auto auto 1fr auto auto;gap:14px}h1{font:400 1.35rem Georgia,serif;margin:0}p{margin:.25rem 0;color:var(--muted);line-height:1.35}.card{border:1px solid var(--line);background:rgba(255,255,255,.045);border-radius:24px;padding:14px}.status{display:flex;gap:10px;align-items:center;font-weight:700}.dot{width:13px;height:13px;border-radius:50%;background:#747989;box-shadow:0 0 0 6px rgba(255,255,255,.05)}.dot.ok{background:var(--ok);box-shadow:0 0 0 6px rgba(80,228,135,.12),0 0 24px rgba(80,228,135,.55)}
-    .videoBox{background:#000;border-radius:24px;overflow:hidden;border:1px solid var(--line);position:relative;min-height:300px}.videoBox video{width:100%;height:100%;display:block;object-fit:contain;background:#000}.placeholder{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--muted);padding:24px}.hide{display:none!important}.actions{display:flex;gap:10px;flex-wrap:wrap}.btn{border:0;border-radius:999px;padding:12px 16px;background:#303546;color:var(--text);font-weight:800}.btn.primary{background:#eef0ff;color:#0a0d18}.btn.danger{background:#5d1822;color:#ffd5d9}.btn:active{transform:scale(.98)}select{width:100%;margin-top:8px;border-radius:14px;background:#0e111b;color:var(--text);border:1px solid var(--line);padding:10px}.log{height:120px;overflow:auto;white-space:pre-wrap;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#cbd1e8;background:#070914;border:1px solid var(--line);border-radius:16px;padding:10px}.stat{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#cbd1e8}
+    .videoBox{background:#000;border-radius:24px;overflow:hidden;border:1px solid var(--line);position:relative;min-height:300px}.videoBox video{width:100%;height:100%;display:block;object-fit:contain;background:#000}.placeholder{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--muted);padding:24px}.hide{display:none!important}.actions{display:flex;gap:10px;flex-wrap:wrap}.btn{border:0;border-radius:999px;padding:12px 16px;background:#303546;color:var(--text);font-weight:800}.btn.primary{background:#eef0ff;color:#0a0d18}.btn.danger{background:#5d1822;color:#ffd5d9}.btn:active{transform:scale(.98)}select{width:100%;margin-top:8px;border-radius:14px;background:#0e111b;color:var(--text);border:1px solid var(--line);padding:10px} .switch{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;color:var(--text)} .switch input{width:auto;transform:scale(1.2)}.log{height:120px;overflow:auto;white-space:pre-wrap;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#cbd1e8;background:#070914;border:1px solid var(--line);border-radius:16px;padding:10px}.stat{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#cbd1e8}
     @media(max-width:900px){body{padding:0}.app{height:100dvh;display:block}.stage{display:none}.side{height:100dvh;border-radius:0;border:0}.videoBox{min-height:50dvh}}
   </style>
 </head>
 <body>
 <main class="app">
-  <section class="stage"><div class="small" id="roomLabel">Direct room: td-clockcam-direct-room · V10 TURN addTrack fix</div><div class="clock" id="clock">12<br>00</div></section>
+  <section class="stage"><div class="small" id="roomLabel">Direct room: td-clockcam-direct-room · V11 camera select + preview toggle</div><div class="clock" id="clock">12<br>00</div></section>
   <aside class="side">
-    <div><h1>Direct Live View</h1><p id="sub">Raw camera WebRTC with Ably signaling + TURN relay. V10 uses addTrack, matching normal video-call apps more closely.</p></div>
+    <div><h1>Direct Live View</h1><p id="sub">Raw camera WebRTC with Ably signaling + TURN relay. V11 keeps the working addTrack path and restores camera selection + local preview toggle.</p></div>
     <div class="card"><div class="status"><span id="dot" class="dot"></span><span id="statusTitle">Starting…</span></div><p id="statusText">Loading.</p></div>
     <div class="videoBox" id="videoBox"><video id="remoteVideo" autoplay playsinline muted></video><video id="localVideo" autoplay playsinline muted class="hide"></video><div id="placeholder" class="placeholder"><div><b>No live feed yet</b><br>Start camera on one device. Press Watch on the other.</div></div></div>
     <div class="card">
+      <label>Camera source on this device<select id="cameraSelect"><option value="">Default camera</option></select></label>
+      <label class="switch"><span>Show camera preview on this device</span><input id="previewToggle" type="checkbox" checked></label>
       <label>Codec preference<select id="codecSelect"><option value="h264">H.264 first — Discord-style/default</option><option value="vp8">VP8 first</option><option value="default">Browser default</option></select></label>
       <label>Connection mode<select id="policySelect"><option value="all">Auto: direct first, TURN if needed</option><option value="relay">Force TURN relay</option></select></label>
       <p class="stat" id="iceInfo">ICE: loading…</p>
@@ -37,19 +39,100 @@
   const ROOM = 'td-clockcam-direct-room';
   const CHANNEL = 'clockcam:' + ROOM;
   const $ = id => document.getElementById(id);
-  const localVideo=$('localVideo'), remoteVideo=$('remoteVideo'), placeholder=$('placeholder'), dot=$('dot'), statusTitle=$('statusTitle'), statusText=$('statusText'), logEl=$('log'), codecSelect=$('codecSelect'), policySelect=$('policySelect'), iceInfo=$('iceInfo'), statsEl=$('stats');
-  const clientId = 'v9-' + Math.random().toString(36).slice(2,8) + '-' + Date.now().toString(36);
-  let ably, channel, localStream, pc, role='idle', cameraClientId=null, statsTimer=null, iceConfig=null, pendingCandidates=[];
+  const localVideo=$('localVideo'), remoteVideo=$('remoteVideo'), placeholder=$('placeholder'), dot=$('dot'), statusTitle=$('statusTitle'), statusText=$('statusText'), logEl=$('log'), codecSelect=$('codecSelect'), policySelect=$('policySelect'), cameraSelect=$('cameraSelect'), previewToggle=$('previewToggle'), iceInfo=$('iceInfo'), statsEl=$('stats');
+  const clientId = 'v11-' + Math.random().toString(36).slice(2,8) + '-' + Date.now().toString(36);
+  let ably, channel, localStream, pc, role='idle', cameraClientId=null, statsTimer=null, iceConfig=null, pendingCandidates=[], localCameras=[], activeDeviceId='';
   let iceServers = [{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}];
   let turnAvailable = false;
   installRemoteVideoDebug();
-  function log(s){ const t=new Date().toLocaleTimeString(); console.log('[v9]',s); logEl.textContent += `[${t}] ${s}\n`; logEl.scrollTop=logEl.scrollHeight; }
+  function log(s){ const t=new Date().toLocaleTimeString(); console.log('[v11]',s); logEl.textContent += `[${t}] ${s}\n`; logEl.scrollTop=logEl.scrollHeight; }
   function setStatus(title,text,live=false){ statusTitle.textContent=title; statusText.textContent=text; dot.classList.toggle('ok',!!live); }
   function send(type, data={}, to='all'){ channel.publish('signal',{ type, from:clientId, to, room:ROOM, ...data }); }
   function updateClock(){ const n=new Date(); $('clock').innerHTML=String(n.getHours()).padStart(2,'0')+'<br>'+String(n.getMinutes()).padStart(2,'0'); }
   setInterval(updateClock,1000); updateClock();
 
+  function updateLocalPreviewVisibility(){
+    if (role === 'camera' && localStream && previewToggle.checked) {
+      localVideo.srcObject = localStream;
+      localVideo.classList.remove('hide');
+      remoteVideo.classList.add('hide');
+      placeholder.classList.add('hide');
+    } else if (role === 'camera' && localStream) {
+      localVideo.srcObject = localStream;
+      localVideo.classList.add('hide');
+      remoteVideo.classList.add('hide');
+      placeholder.classList.remove('hide');
+      placeholder.innerHTML = '<div><b>Camera streaming</b><br>Local preview is hidden. The selected camera is still active.</div>';
+    }
+  }
 
+  async function loadCameras(){
+    const previous = cameraSelect.value || activeDeviceId || '';
+    cameraSelect.innerHTML = '<option value="">Default camera</option>';
+    localCameras = [];
+    try {
+      if (!navigator.mediaDevices?.enumerateDevices) return;
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      localCameras = devices.filter(d => d.kind === 'videoinput');
+      localCameras.forEach((camera, index) => {
+        const option = document.createElement('option');
+        option.value = camera.deviceId;
+        option.textContent = camera.label || `Camera ${index + 1}`;
+        cameraSelect.appendChild(option);
+      });
+      if (previous && [...cameraSelect.options].some(o => o.value === previous)) cameraSelect.value = previous;
+      log('Cameras found: ' + (localCameras.map((c,i)=>c.label || `Camera ${i+1}`).join(', ') || 'none listed yet'));
+    } catch (e) {
+      log('Camera list failed: ' + (e.message || e));
+    }
+  }
+
+  async function getCameraStream(deviceId){
+    const video = deviceId
+      ? { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }
+      : { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } };
+    return navigator.mediaDevices.getUserMedia({ video, audio: false });
+  }
+
+  async function switchCamera(deviceId){
+    if (!localStream || role !== 'camera') return;
+    try {
+      setStatus('Switching camera…','Opening selected camera.',true);
+      const newStream = await getCameraStream(deviceId || '');
+      const newTrack = newStream.getVideoTracks()[0];
+      if (!newTrack) throw new Error('Selected camera produced no video track.');
+
+      if (pc) {
+        const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+        if (sender) {
+          await sender.replaceTrack(newTrack);
+          log('Replaced outgoing video track with: ' + (newTrack.label || 'selected camera'));
+        } else {
+          pAddTrackWarning();
+        }
+      }
+
+      localStream.getTracks().forEach(t => t.stop());
+      localStream = newStream;
+      activeDeviceId = deviceId || newTrack.getSettings?.().deviceId || '';
+      localVideo.srcObject = localStream;
+      await loadCameras();
+      cameraSelect.value = activeDeviceId && [...cameraSelect.options].some(o=>o.value===activeDeviceId) ? activeDeviceId : (deviceId || '');
+      updateLocalPreviewVisibility();
+      send('camera-online',{codec:codecSelect.value});
+      setStatus('Camera online','Camera switched. Viewer should keep receiving the feed.',true);
+      log('Camera switched. Settings: '+JSON.stringify(newTrack.getSettings?.()||{}));
+    } catch(e) {
+      alert('Could not switch camera: '+(e.message||e));
+      setStatus('Camera switch failed', e.message||String(e), true);
+      log('Camera switch error: '+(e.message||e));
+    }
+  }
+
+  function pAddTrackWarning(){ log('No existing sender found for replaceTrack. Switch may require pressing Watch again on the viewer.'); }
+
+  previewToggle.addEventListener('change', updateLocalPreviewVisibility);
+  cameraSelect.addEventListener('change', () => switchCamera(cameraSelect.value || ''));
 
   async function loadIceConfig(){
     try{
@@ -74,7 +157,7 @@
     channel = ably.channels.get(CHANNEL);
     await new Promise((resolve,reject)=>{ const to=setTimeout(()=>reject(new Error('Ably connect timeout')),45000); ably.connection.once('connected',()=>{clearTimeout(to);resolve();}); ably.connection.once('failed',e=>{clearTimeout(to);reject(e.reason||new Error('Ably failed'));}); });
     await channel.subscribe('signal', onSignal);
-    await channel.presence.enter({role:'idle', v:'9', clientId});
+    await channel.presence.enter({role:'idle', v:'11', clientId});
     setStatus('Ready','Connected to realtime signaling.');
     log('Ably connected as '+clientId);
   }
@@ -151,9 +234,15 @@
     try{
       role='camera';
       setStatus('Opening camera…','Requesting camera permission.');
-      localStream = await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30}}, audio:false});
-      localVideo.srcObject=localStream; localVideo.classList.remove('hide'); remoteVideo.classList.add('hide'); placeholder.classList.add('hide');
-      await channel.presence.update({role:'camera', v:'9', clientId});
+      activeDeviceId = cameraSelect.value || '';
+      localStream = await getCameraStream(activeDeviceId);
+      const track = localStream.getVideoTracks()[0];
+      activeDeviceId = activeDeviceId || track?.getSettings?.().deviceId || '';
+      localVideo.srcObject=localStream;
+      await loadCameras();
+      if (activeDeviceId && [...cameraSelect.options].some(o=>o.value===activeDeviceId)) cameraSelect.value = activeDeviceId;
+      updateLocalPreviewVisibility();
+      await channel.presence.update({role:'camera', v:'11', clientId});
       send('camera-online',{codec:codecSelect.value});
       setStatus('Camera online','Camera preview works. Waiting for viewer offer.',true);
       log('Camera started. Track settings: '+JSON.stringify(localStream.getVideoTracks()[0].getSettings?.()||{}));
@@ -232,12 +321,13 @@
   function stop(){
     try{pc?.close()}catch{} pc=null; clearInterval(statsTimer);
     if(localStream){localStream.getTracks().forEach(t=>t.stop()); localStream=null;}
-    localVideo.srcObject=null; remoteVideo.srcObject=null; localVideo.classList.add('hide'); remoteVideo.classList.remove('hide'); placeholder.classList.remove('hide');
-    role='idle'; cameraClientId=null; if(channel) channel.presence.update({role:'idle',v:'9',clientId}).catch(()=>{});
+    localVideo.srcObject=null; remoteVideo.srcObject=null; localVideo.classList.add('hide'); remoteVideo.classList.remove('hide'); placeholder.classList.remove('hide'); placeholder.innerHTML = '<div><b>No live feed yet</b><br>Start camera on one device. Press Watch on the other.</div>'; activeDeviceId='';
+    role='idle'; cameraClientId=null; if(channel) channel.presence.update({role:'idle',v:'11',clientId}).catch(()=>{});
     setStatus('Ready','Stopped.'); statsEl.textContent='Stats: idle';
   }
 
   $('startBtn').onclick=startCamera; $('watchBtn').onclick=watch; $('stopBtn').onclick=stop; $('fullBtn').onclick=()=>{ const el=$('videoBox'); if(el.requestFullscreen) el.requestFullscreen(); else remoteVideo.webkitEnterFullscreen?.(); };
+  loadCameras();
   loadIceConfig().then(connectAbly).catch(e=>{ alert('Could not connect signaling: '+(e.message||e)); setStatus('Signaling failed',e.message||String(e)); log('Ably failed '+(e.message||e)); });
 })();
 </script>
