@@ -3,77 +3,1565 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Clock Cam V7 Data Video</title>
+  <title>Always-On Clock + Direct Camera Feed V8</title>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500&family=Poiret+One&family=Major+Mono+Display&display=swap" rel="stylesheet">
   <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
+
   <style>
-    :root{--text:rgba(244,246,255,.94);--muted:rgba(244,246,255,.64);--line:rgba(255,255,255,.16);--radius:32px;--shadow:0 30px 90px rgba(0,0,0,.42)}
-    *{box-sizing:border-box} html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#050711;color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;user-select:none}
-    body:before{content:"";position:fixed;inset:-18%;background:radial-gradient(circle at 18% 18%,rgba(128,151,255,.27),transparent 30%),radial-gradient(circle at 76% 20%,rgba(188,119,255,.2),transparent 28%),radial-gradient(circle at 62% 78%,rgba(91,207,255,.17),transparent 34%),linear-gradient(135deg,#03040b 0%,#101322 48%,#050711 100%);animation:drift 22s ease-in-out infinite alternate;z-index:-1}@keyframes drift{to{transform:translate3d(1.8%,1.4%,0) scale(1.04);filter:hue-rotate(12deg)}}
-    .app{width:100%;height:100%;padding:22px;display:grid;grid-template-columns:1fr minmax(360px,29vw);gap:22px}.stage,.side{border:1px solid var(--line);border-radius:var(--radius);background:rgba(7,9,18,.44);box-shadow:var(--shadow);backdrop-filter:blur(22px) saturate(120%)}
-    .stage{position:relative;overflow:hidden;display:grid;place-items:center}.clock{font-family:"Poiret One",system-ui;font-size:clamp(8rem,22vw,22rem);line-height:.82;letter-spacing:-.075em;text-align:center;text-shadow:0 8px 35px rgba(163,177,255,.34)}.seconds{position:absolute;bottom:8%;font-family:"Major Mono Display",monospace;color:var(--muted);font-size:clamp(1rem,2vw,1.6rem);letter-spacing:.22em}
-    .side{padding:18px;display:grid;grid-template-rows:auto auto 1fr auto auto;gap:14px;min-height:0}.side h1{font-family:"Cinzel",serif;font-weight:400;margin:0 0 4px;font-size:1.25rem}.side p{margin:0;color:var(--muted);line-height:1.35}.card{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.07);border-radius:24px;padding:14px;color:var(--muted);line-height:1.35}.card strong{display:block;color:var(--text);font-size:1rem;margin-bottom:4px}.video-card{position:relative;min-height:360px;border-radius:28px;overflow:hidden;background:#000;border:1px solid rgba(255,255,255,.13)}video,canvas{width:100%;height:100%;object-fit:contain;display:block;background:#000}.hidden{display:none!important}.placeholder{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--muted);padding:22px}.placeholder strong{display:block;color:var(--text);font-size:1.2rem;margin-bottom:8px}.actions{display:flex;gap:10px;flex-wrap:wrap}.btn{border:0;border-radius:999px;padding:12px 16px;background:rgba(255,255,255,.14);color:var(--text);font-weight:700;cursor:pointer}.btn.primary{background:rgba(236,240,255,.92);color:#090b16}.btn.danger{background:rgba(255,101,101,.22);color:#ffdede}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,.35);box-shadow:0 0 0 5px rgba(255,255,255,.06)}.dot.live{background:#74ffad;box-shadow:0 0 0 5px rgba(116,255,173,.11),0 0 25px rgba(116,255,173,.42)}.top{position:fixed;top:18px;right:18px;z-index:3;display:flex;gap:10px;align-items:center;background:rgba(8,10,20,.45);border:1px solid var(--line);border-radius:999px;padding:10px 14px;backdrop-filter:blur(18px)}
-    select{width:100%;border-radius:16px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.08);color:var(--text);padding:11px 12px}.fine{font:12px ui-monospace,Menlo,monospace;white-space:pre-wrap;max-height:130px;overflow:auto;color:rgba(255,255,255,.65);background:rgba(0,0,0,.28);border-radius:14px;padding:10px;border:1px solid rgba(255,255,255,.08)}
-    @media(max-width:900px){html,body{overflow:auto}.app{height:auto;min-height:100%;grid-template-columns:1fr;grid-template-rows:minmax(45vh,1fr) auto}.video-card{min-height:420px}} 
+    :root {
+      --clock-font: "Poiret One";
+      --clock-size: clamp(8rem, 22vw, 22rem);
+      --text: rgba(244, 246, 255, 0.94);
+      --muted: rgba(244, 246, 255, 0.62);
+      --line: rgba(255, 255, 255, 0.16);
+      --shadow: 0 30px 90px rgba(0, 0, 0, 0.42);
+      --radius: 38px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #050711;
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      user-select: none;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: -18%;
+      background:
+        radial-gradient(circle at 18% 18%, rgba(128, 151, 255, 0.27), transparent 30%),
+        radial-gradient(circle at 76% 20%, rgba(188, 119, 255, 0.20), transparent 28%),
+        radial-gradient(circle at 62% 78%, rgba(91, 207, 255, 0.17), transparent 34%),
+        linear-gradient(135deg, #03040b 0%, #101322 48%, #050711 100%);
+      animation: drift 22s ease-in-out infinite alternate;
+      z-index: -3;
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+      background-size: 46px 46px;
+      mask-image: radial-gradient(circle at center, black 38%, transparent 85%);
+      z-index: -2;
+    }
+
+    @keyframes drift {
+      from { transform: translate3d(-1.8%, -1.2%, 0) scale(1); filter: hue-rotate(0deg); }
+      to { transform: translate3d(1.8%, 1.4%, 0) scale(1.04); filter: hue-rotate(12deg); }
+    }
+
+    .app {
+      width: 100%;
+      height: 100%;
+      padding: max(22px, env(safe-area-inset-top)) max(22px, env(safe-area-inset-right)) max(22px, env(safe-area-inset-bottom)) max(22px, env(safe-area-inset-left));
+      display: grid;
+      grid-template-columns: 1fr minmax(360px, 29vw);
+      gap: 22px;
+    }
+
+    .stage {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: linear-gradient(145deg, rgba(255,255,255,0.11), rgba(255,255,255,0.035));
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow), inset 0 0 0 1px rgba(255,255,255,0.04);
+      backdrop-filter: blur(24px) saturate(130%);
+    }
+
+    .stage::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 70vmin;
+      height: 70vmin;
+      margin-left: -35vmin;
+      margin-top: -35vmin;
+      border-radius: 999px;
+      background: conic-gradient(from 180deg, rgba(255,255,255,0.0), rgba(255,255,255,0.13), rgba(123,154,255,0.02), rgba(255,255,255,0.0));
+      filter: blur(8px);
+      animation: slowspin 32s linear infinite;
+      opacity: 0.65;
+    }
+
+    @keyframes slowspin { to { transform: rotate(1turn); } }
+
+    .clock-shell {
+      position: absolute;
+      left: 80px;
+      top: 80px;
+      width: 560px;
+      height: 520px;
+      min-width: 220px;
+      min-height: 230px;
+      display: grid;
+      place-items: center;
+      padding: clamp(18px, 4vw, 72px);
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+      z-index: 2;
+      cursor: grab;
+      touch-action: none;
+      overflow: visible;
+    }
+
+    .clock-shell.dragging { cursor: grabbing; }
+
+    .clock {
+      font-family: var(--clock-font), ui-sans-serif, system-ui;
+      font-size: var(--clock-size);
+      line-height: 0.82;
+      letter-spacing: -0.075em;
+      font-weight: 400;
+      text-align: center;
+      text-shadow: 0 8px 35px rgba(163,177,255,0.34), 0 1px 0 rgba(255,255,255,0.24);
+      transform: translateX(-0.035em);
+      pointer-events: none;
+    }
+
+    .seconds {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 18px;
+      text-align: center;
+      font-family: "Major Mono Display", monospace;
+      font-size: clamp(0.85rem, 2vw, 1.6rem);
+      color: var(--muted);
+      letter-spacing: 0.22em;
+      pointer-events: none;
+    }
+
+    .clock-resize-handle {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: 52px;
+      height: 52px;
+      cursor: nwse-resize;
+      touch-action: none;
+      z-index: 5;
+      border-right: 3px solid rgba(255,255,255,0.38);
+      border-bottom: 3px solid rgba(255,255,255,0.38);
+      border-radius: 0 0 10px 0;
+    }
+
+    .clock-resize-handle::before {
+      content: "";
+      position: absolute;
+      right: 13px;
+      bottom: 13px;
+      width: 16px;
+      height: 16px;
+      border-right: 2px solid rgba(255,255,255,0.23);
+      border-bottom: 2px solid rgba(255,255,255,0.23);
+    }
+
+    .topbar {
+      position: fixed;
+      left: 28px;
+      right: 28px;
+      top: 22px;
+      z-index: 20;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      pointer-events: none;
+    }
+
+    .pill {
+      pointer-events: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid var(--line);
+      background: rgba(8, 10, 20, 0.42);
+      backdrop-filter: blur(18px);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 10px 14px;
+      box-shadow: 0 18px 50px rgba(0,0,0,0.22);
+    }
+
+    .room-pill {
+      max-width: min(56vw, 820px);
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
+    .btn {
+      border: 0;
+      cursor: pointer;
+      border-radius: 999px;
+      padding: 11px 15px;
+      background: rgba(255,255,255,0.14);
+      color: var(--text);
+      font-weight: 650;
+      letter-spacing: -0.01em;
+      transition: transform .18s ease, background .18s ease, opacity .18s ease;
+      white-space: nowrap;
+    }
+
+    .btn:hover { transform: translateY(-1px); background: rgba(255,255,255,0.20); }
+    .btn:active { transform: translateY(1px) scale(0.99); }
+    .btn.primary { background: rgba(236, 240, 255, 0.92); color: #090b16; }
+    .btn.danger { background: rgba(255, 101, 101, 0.22); color: #ffdede; }
+    .btn.small { padding: 8px 11px; font-size: 0.82rem; }
+
+    .side {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto auto auto 1fr auto;
+      gap: 14px;
+      border-radius: var(--radius);
+      padding: 18px;
+      background: rgba(7, 9, 18, 0.42);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(22px) saturate(120%);
+    }
+
+    .side h1 {
+      margin: 3px 0 3px;
+      font-family: "Cinzel", serif;
+      font-weight: 400;
+      font-size: 1.2rem;
+      letter-spacing: 0.03em;
+    }
+
+    .side p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.35;
+    }
+
+    .status-card, .settings-card {
+      display: grid;
+      gap: 9px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.07);
+      border-radius: 24px;
+      padding: 14px;
+      color: var(--muted);
+      font-size: 0.88rem;
+      line-height: 1.35;
+    }
+
+    .status-card strong, .settings-card strong { color: var(--text); font-size: 1rem; }
+
+    .switch-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--text);
+      font-size: 0.9rem;
+    }
+
+    .switch-row input { width: auto; transform: scale(1.2); }
+
+    .video-card {
+      position: relative;
+      min-height: 300px;
+      border-radius: 28px;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 40% 22%, rgba(255,255,255,0.12), transparent 28%),
+        rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.13);
+    }
+
+    .video-card:fullscreen {
+      width: 100vw;
+      height: 100vh;
+      border-radius: 0;
+      border: 0;
+      background: #000;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      background: #000;
+    }
+
+    .stream-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      background: #000;
+      z-index: 2;
+    }
+
+    .video-card video { position: relative; z-index: 1; }
+
+    .remote-frame {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      background: #000;
+      z-index: 4;
+    }
+
+    .source-video {
+      position: fixed !important;
+      left: -3px;
+      top: -3px;
+      width: 2px !important;
+      height: 2px !important;
+      opacity: 0.001;
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    .video-placeholder {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 22px;
+      color: var(--muted);
+    }
+
+    .video-placeholder strong {
+      color: var(--text);
+      display: block;
+      font-size: 1.2rem;
+      margin-bottom: 7px;
+    }
+
+    .fs-exit {
+      position: absolute;
+      right: max(18px, env(safe-area-inset-right));
+      top: max(18px, env(safe-area-inset-top));
+      z-index: 80;
+      display: none;
+      background: rgba(0,0,0,0.62);
+      border: 1px solid rgba(255,255,255,0.22);
+      backdrop-filter: blur(14px);
+    }
+
+    .video-card:fullscreen .fs-exit { display: inline-flex; }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.35);
+      box-shadow: 0 0 0 5px rgba(255,255,255,0.06);
+    }
+
+    .status-dot.live {
+      background: #74ffad;
+      box-shadow: 0 0 0 5px rgba(116,255,173,0.11), 0 0 25px rgba(116,255,173,0.42);
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .panel {
+      position: fixed;
+      right: 24px;
+      top: 82px;
+      width: min(440px, calc(100vw - 48px));
+      max-height: calc(100vh - 110px);
+      overflow: auto;
+      z-index: 30;
+      display: none;
+      border-radius: 28px;
+      border: 1px solid var(--line);
+      background: rgba(7, 9, 18, 0.88);
+      backdrop-filter: blur(26px) saturate(135%);
+      box-shadow: 0 35px 100px rgba(0,0,0,0.45);
+      padding: 18px;
+    }
+
+    .panel.open { display: block; }
+    .panel h2 { margin: 2px 0 14px; font-size: 1.05rem; }
+
+    label {
+      display: grid;
+      gap: 7px;
+      margin: 13px 0;
+      color: rgba(255,255,255,0.76);
+      font-size: 0.86rem;
+    }
+
+    input, select {
+      width: 100%;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      padding: 11px 12px;
+      outline: none;
+    }
+
+    option { background: #111422; }
+    input[type="range"] { padding: 0; }
+
+    .fineprint {
+      color: rgba(255,255,255,0.62);
+      font-size: 0.74rem;
+      line-height: 1.45;
+      padding: 10px 12px;
+      margin-top: 10px;
+      background: rgba(0,0,0,0.32);
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      max-height: 220px;
+      min-height: 90px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 900px) {
+      html, body { overflow: auto; }
+      .app {
+        min-height: 100%;
+        height: auto;
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(70vh, 1fr) auto;
+      }
+      .topbar { left: 18px; right: 18px; top: 14px; }
+      .room-pill { display: none; }
+      .side { min-height: 460px; }
+    }
+
+    body.phone-viewer {
+      overflow: hidden;
+      background: #000;
+    }
+
+    body.phone-viewer::before,
+    body.phone-viewer::after { display: none; }
+
+    body.phone-viewer .topbar,
+    body.phone-viewer .stage,
+    body.phone-viewer .panel,
+    body.phone-viewer .side > div:first-child,
+    body.phone-viewer .settings-card { display: none !important; }
+
+    body.phone-viewer .app {
+      width: 100vw;
+      height: 100dvh;
+      min-height: 100dvh;
+      padding: 0;
+      display: block;
+      overflow: hidden;
+    }
+
+    body.phone-viewer .side {
+      width: 100vw;
+      height: 100dvh;
+      min-height: 100dvh;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: #000;
+      box-shadow: none;
+      backdrop-filter: none;
+    }
+
+    body.phone-viewer .status-card {
+      margin: 12px;
+      z-index: 4;
+      background: rgba(0,0,0,0.45);
+    }
+
+    body.phone-viewer .video-card {
+      width: 100vw;
+      height: 100dvh;
+      min-height: 0;
+      border: 0;
+      border-radius: 0;
+      background: #000;
+    }
+
+    body.phone-viewer video {
+      width: 100vw;
+      height: 100dvh;
+      object-fit: contain;
+      background: #000;
+    }
+
+    body.phone-viewer .actions {
+      position: fixed;
+      left: 50%;
+      bottom: calc(env(safe-area-inset-bottom) + 16px);
+      transform: translateX(-50%);
+      z-index: 60;
+      display: flex;
+      flex-wrap: nowrap;
+      justify-content: center;
+      gap: 9px;
+      padding: 10px;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.48);
+      border: 1px solid rgba(255,255,255,0.16);
+      backdrop-filter: blur(16px);
+    }
+
+    body.phone-viewer .btn { padding: 12px 14px; font-size: 0.9rem; }
+    body.phone-viewer .video-placeholder { color: rgba(255,255,255,0.68); padding-bottom: 110px; }
   </style>
 </head>
 <body>
-  <div class="top"><span class="dot" id="statusDot"></span><button class="btn" id="configBtn">V7</button></div>
+  <div class="topbar">
+    <div class="pill room-pill" id="roomLabel">Direct feed: starting…</div>
+    <div class="pill">
+      <span class="status-dot" id="statusDot"></span>
+      <button class="btn small" id="configBtn" type="button">Config</button>
+    </div>
+  </div>
+
   <main class="app">
-    <section class="stage"><div><div class="clock" id="clock">12<br>57</div><div class="seconds" id="seconds">00</div></div></section>
+    <section class="stage" id="stage" aria-label="Clock display">
+      <div class="clock-shell" id="clockShell" title="Drag to move. Drag bottom-right corner to resize.">
+        <div class="clock" id="clock">12<br>57</div>
+        <div class="seconds" id="seconds">00</div>
+        <div class="clock-resize-handle" id="clockResizeHandle" title="Drag to resize"></div>
+      </div>
+    </section>
+
     <aside class="side">
-      <div><h1>Direct Live View</h1><p id="connectionText">V7 data-video mode. This avoids the black WebRTC video-track path.</p></div>
-      <div class="card"><strong id="statusTitle">Ready</strong><span id="statusText">Start camera on one device. Press Watch on the other.</span></div>
+      <div>
+        <h1>Direct Live View</h1>
+        <p id="connectionText">No PeerJS. No Blob video. Vercel only creates an Ably token; Ably carries tiny signaling messages; WebRTC carries the live video.</p>
+      </div>
+
+      <div class="status-card" id="statusCard">
+        <strong id="viewerTitle">Ready</strong>
+        <span id="viewerText">Start camera on the car/camera device. Press Watch on the screen device.</span>
+      </div>
+
+      <div class="settings-card">
+        <strong>Camera mode</strong>
+        <label class="switch-row">
+          <span>Compatibility mode for car/capture cameras</span>
+          <input id="compatToggle" type="checkbox" checked />
+        </label>
+        <p>This keeps the V6 direct WebRTC connection, but also sends live canvas JPEG frames over a direct WebRTC data channel. No Blob, no Redis, no server video. This bypasses the car browser black video-track bug.</p>
+      </div>
+
       <div class="video-card" id="videoCard">
+        <img id="remoteFrameImage" class="remote-frame hidden" alt="Remote camera frame" />
+        <video id="remoteVideo" autoplay playsinline muted class="hidden"></video>
         <video id="localVideo" autoplay muted playsinline class="hidden"></video>
-        <canvas id="streamCanvas" class="hidden"></canvas>
-        <video id="remoteVideo" autoplay muted playsinline class="hidden"></video>
-        <div class="placeholder" id="placeholder"><div><strong>No live feed yet</strong>Start camera on one device. Press Watch on the other.</div></div>
+        <canvas id="streamCanvas" class="stream-canvas hidden"></canvas>
+        <video id="sourceVideo" autoplay muted playsinline class="source-video"></video>
+        <button class="btn fs-exit" id="exitFullscreenBtn" type="button">Exit fullscreen</button>
+        <div class="video-placeholder" id="placeholder">
+          <div>
+            <strong>No live feed yet</strong>
+            Start camera on one device. Press Watch on the other.
+          </div>
+        </div>
       </div>
+
       <div class="actions">
-        <button class="btn primary" id="startBtn">Start camera</button>
-        <button class="btn" id="watchBtn">Watch</button>
-        <button class="btn" id="fullscreenBtn">Fullscreen</button>
-        <button class="btn danger hidden" id="stopBtn">Stop</button>
+        <button class="btn primary" id="startBtn" type="button">Start camera</button>
+        <button class="btn" id="watchBtn" type="button">Watch</button>
+        <button class="btn" id="fullscreenBtn" type="button">Fullscreen</button>
+        <button class="btn danger hidden" id="stopBtn" type="button">Stop</button>
       </div>
-      <div class="card">
-        <strong>Camera source</strong>
-        <select id="cameraSelect"><option value="">Default camera</option></select>
-        <p style="margin-top:10px">This version sends a live compressed WebM stream over a WebRTC data channel, not a normal WebRTC video track.</p>
-      </div>
-      <div class="fine" id="debugText">Booting…</div>
     </aside>
   </main>
-<script>
-(()=>{"use strict";
-const $=id=>document.getElementById(id);const clock=$("clock"),seconds=$("seconds"),statusDot=$("statusDot"),statusTitle=$("statusTitle"),statusText=$("statusText"),connectionText=$("connectionText"),debugText=$("debugText"),cameraSelect=$("cameraSelect"),localVideo=$("localVideo"),remoteVideo=$("remoteVideo"),streamCanvas=$("streamCanvas"),placeholder=$("placeholder"),startBtn=$("startBtn"),watchBtn=$("watchBtn"),stopBtn=$("stopBtn"),fullscreenBtn=$("fullscreenBtn"),videoCard=$("videoCard");
-const ROOM="td-clockcam-direct-room-v7";const CHANNEL_NAME=`clockcam:${ROOM}`;const CLIENT_ID=`${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`;
-const ICE_CONFIG={iceServers:[{urls:"stun:stun.l.google.com:19302"},{urls:"stun:stun1.l.google.com:19302"},{urls:"turn:openrelay.metered.ca:80",username:"openrelayproject",credential:"openrelayproject"},{urls:"turn:openrelay.metered.ca:443",username:"openrelayproject",credential:"openrelayproject"},{urls:"turn:openrelay.metered.ca:443?transport=tcp",username:"openrelayproject",credential:"openrelayproject"}]};
-let ably=null,channel=null,role=null,localStream=null,canvasTimer=null,recorder=null,pc=null,dc=null,sessionId=null,mediaSource=null,sourceBuffer=null,appendQueue=[],sourceOpen=false,remoteUrl=null,readyTimer=null,logLines=[];
-function log(m){console.log("[v7]",m);logLines.push(`[${new Date().toLocaleTimeString()}] ${m}`);if(logLines.length>35)logLines.shift();debugText.textContent=logLines.join("\n");debugText.scrollTop=debugText.scrollHeight}
-function setStatus(t,x,live=false){statusTitle.textContent=t;statusText.textContent=x;connectionText.textContent=x;statusDot.classList.toggle("live",!!live)}
-function tick(){const n=new Date();clock.innerHTML=`${String(n.getHours()).padStart(2,"0")}<br>${String(n.getMinutes()).padStart(2,"0")}`;seconds.textContent=String(n.getSeconds()).padStart(2,"0")}setInterval(tick,250);tick();
-async function connectSignaling(){if(channel)return; if(!window.Ably)throw new Error("Ably script did not load."); setStatus("Connecting…","Connecting realtime signaling…"); ably=new Ably.Realtime({authUrl:`/api/ably-token?clientId=${encodeURIComponent(CLIENT_ID)}&t=${Date.now()}`,transports:["web_socket","xhr_streaming","xhr_polling"],closeOnUnload:true}); await new Promise((res,rej)=>{const to=setTimeout(()=>rej(new Error("Realtime signaling timed out.")),45000);ably.connection.once("connected",()=>{clearTimeout(to);res()});ably.connection.once("failed",s=>{clearTimeout(to);rej(new Error(s.reason?.message||"Ably failed"))})}); channel=ably.channels.get(CHANNEL_NAME); await channel.subscribe("signal",m=>handleSignal(m.data)); log("Ably connected.")}
-function publish(type,target,payload={},sid=sessionId){if(!channel)return; channel.publish("signal",{type,from:CLIENT_ID,target,payload,sessionId:sid,ts:Date.now()})}
-async function loadCameras(){try{const devs=await navigator.mediaDevices.enumerateDevices();const cams=devs.filter(d=>d.kind==="videoinput");cameraSelect.innerHTML='<option value="">Default camera</option>';cams.forEach((c,i)=>{const o=document.createElement("option");o.value=c.deviceId;o.textContent=c.label||`Camera ${i+1}`;cameraSelect.appendChild(o)})}catch(e){log("Camera list warning: "+e.message)}}
-async function getCamera(){const id=cameraSelect.value;const video=id?{deviceId:{exact:id},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30,max:30}}:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30,max:30}};return navigator.mediaDevices.getUserMedia({video,audio:false})}
-function startCanvasPump(){stopCanvasPump();const ctx=streamCanvas.getContext("2d",{alpha:false});const w=640,h=360;streamCanvas.width=w;streamCanvas.height=h;streamCanvas.classList.remove("hidden");let f=0;function draw(){f++;ctx.fillStyle="#050711";ctx.fillRect(0,0,w,h);try{if(localVideo.readyState>=2)ctx.drawImage(localVideo,0,0,w,h)}catch(e){}ctx.fillStyle="rgba(255,255,255,.90)";ctx.fillRect(12,12,420,76);ctx.fillStyle="#07111f";ctx.font="bold 24px system-ui";ctx.fillText("V7 DATA VIDEO LIVE",26,43);ctx.font="17px system-ui";ctx.fillText(`${new Date().toLocaleTimeString()} · frame ${f}`,26,68)} draw(); canvasTimer=setInterval(draw,66);}
-function stopCanvasPump(){if(canvasTimer)clearInterval(canvasTimer);canvasTimer=null}
-function pickMime(){const list=["video/webm;codecs=vp8","video/webm;codecs=vp9","video/webm","video/mp4;codecs=h264","video/mp4"];return list.find(m=>window.MediaRecorder&&MediaRecorder.isTypeSupported(m))||""}
-function startDataVideoSender(){if(!dc||dc.readyState!=="open")return; if(!window.MediaRecorder) {dc.send(JSON.stringify({type:"error",message:"MediaRecorder not supported on camera browser"}));return} const mime=pickMime(); if(!mime){dc.send(JSON.stringify({type:"error",message:"No supported MediaRecorder video format"}));return} const stream=streamCanvas.captureStream(15); try{recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:900000})}catch(e){dc.send(JSON.stringify({type:"error",message:"MediaRecorder failed: "+e.message}));return} dc.send(JSON.stringify({type:"mime",mime})); recorder.ondataavailable=async ev=>{if(ev.data&&ev.data.size>0&&dc&&dc.readyState==="open"){while(dc.bufferedAmount>4*1024*1024) await new Promise(r=>setTimeout(r,20)); const buf=await ev.data.arrayBuffer(); dc.send(buf)}}; recorder.onstart=()=>{log("MediaRecorder started: "+mime);setStatus("Streaming","Sending direct data-video feed to viewer.",true)}; recorder.onerror=e=>log("Recorder error: "+(e.error?.message||e.message||e)); recorder.start(250)}
-function stopDataVideo(){try{recorder&&recorder.state!=="inactive"&&recorder.stop()}catch{} recorder=null}
-async function startCamera(){try{await connectSignaling();role="camera";localStream=await getCamera();localVideo.srcObject=localStream;localVideo.classList.remove("hidden");remoteVideo.classList.add("hidden");placeholder.classList.add("hidden");await localVideo.play().catch(()=>{});await loadCameras();startCanvasPump();startBtn.classList.add("hidden");watchBtn.classList.add("hidden");stopBtn.classList.remove("hidden");setStatus("Camera online","V7 camera is ready. Press Watch on viewer.",true);publish("camera-ready","all",{clientId:CLIENT_ID});clearInterval(readyTimer);readyTimer=setInterval(()=>publish("camera-ready","all",{}),4000);log("Camera ready.")}catch(e){alert("Could not start: "+(e.message||e));log("Start failed: "+(e.message||e))}}
-async function watch(){try{await connectSignaling();stopViewer();role="viewer";sessionId=`${CLIENT_ID}-${Date.now().toString(36)}`;pc=new RTCPeerConnection(ICE_CONFIG);dc=pc.createDataChannel("video-data",{ordered:true});dc.binaryType="arraybuffer";dc.onopen=()=>{log("Data channel open.");setStatus("Connected","Data channel open. Waiting for video chunks…",true)};dc.onmessage=ev=>handleDataVideo(ev.data);dc.onclose=()=>log("Data channel closed.");pc.onicecandidate=ev=>{if(ev.candidate)publish("ice","camera",ev.candidate.toJSON())};pc.onconnectionstatechange=()=>{log("Viewer peer: "+pc.connectionState); if(pc.connectionState==="connected")setStatus("Connected","Direct data-video connection established.",true)};const offer=await pc.createOffer();await pc.setLocalDescription(offer);publish("offer","camera",pc.localDescription.toJSON());remoteVideo.classList.remove("hidden");placeholder.classList.add("hidden");watchBtn.textContent="Watching…";watchBtn.classList.add("primary");setStatus("Connecting…","Offer sent. Waiting for camera answer…");log("Offer sent.")}catch(e){alert("Could not watch: "+(e.message||e));log("Watch failed: "+(e.message||e));stopViewer()}}
-function setupMse(mime){if(!window.MediaSource)throw new Error("MediaSource is not supported on this viewer browser.");if(!MediaSource.isTypeSupported(mime))throw new Error("Viewer does not support "+mime);appendQueue=[];sourceOpen=false;if(remoteUrl)URL.revokeObjectURL(remoteUrl);mediaSource=new MediaSource();remoteUrl=URL.createObjectURL(mediaSource);remoteVideo.src=remoteUrl;remoteVideo.muted=true;remoteVideo.autoplay=true;remoteVideo.playsInline=true;mediaSource.addEventListener("sourceopen",()=>{sourceOpen=true;sourceBuffer=mediaSource.addSourceBuffer(mime);sourceBuffer.mode="sequence";sourceBuffer.addEventListener("updateend",pumpAppend);pumpAppend();remoteVideo.play().catch(e=>log("play warning: "+e.message));});log("MSE setup: "+mime)}
-function handleDataVideo(data){if(typeof data==="string"){let msg;try{msg=JSON.parse(data)}catch{return} if(msg.type==="mime"){try{setupMse(msg.mime);setStatus("Receiving video","MSE ready. Receiving direct data-video stream…",true)}catch(e){alert(e.message);log(e.message)}} if(msg.type==="error"){alert("Camera error: "+msg.message);log("Camera error: "+msg.message)} return} appendQueue.push(data); if(appendQueue.length>40)appendQueue.splice(0,appendQueue.length-10); pumpAppend()}
-function pumpAppend(){if(!sourceOpen||!sourceBuffer||sourceBuffer.updating||!appendQueue.length)return;try{sourceBuffer.appendBuffer(appendQueue.shift())}catch(e){log("append warning: "+e.message);appendQueue=[]}}
-async function handleSignal(msg){if(!msg||msg.from===CLIENT_ID)return;if(msg.target!=="all"&&msg.target!==CLIENT_ID&&!(role==="camera"&&msg.target==="camera"))return;if(role==="camera"&&msg.type==="offer"){sessionId=msg.sessionId;stopDataVideo();try{pc&&pc.close()}catch{} pc=new RTCPeerConnection(ICE_CONFIG);pc.ondatachannel=ev=>{dc=ev.channel;dc.binaryType="arraybuffer";dc.onopen=()=>startDataVideoSender();dc.onclose=()=>stopDataVideo()};pc.onicecandidate=ev=>{if(ev.candidate)publish("ice",msg.from,ev.candidate.toJSON(),sessionId)};pc.onconnectionstatechange=()=>log("Camera peer: "+pc.connectionState);await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));const ans=await pc.createAnswer();await pc.setLocalDescription(ans);publish("answer",msg.from,pc.localDescription.toJSON(),sessionId);log("Answer sent.");return} if(role==="viewer"&&msg.type==="answer"&&msg.sessionId===sessionId){await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));log("Answer received.");return} if(msg.type==="ice"&&pc&&msg.sessionId===sessionId){await pc.addIceCandidate(new RTCIceCandidate(msg.payload)).catch(e=>log("ICE warning: "+e.message));}}
-function stopViewer(){try{pc&&pc.close()}catch{} pc=null;dc=null;appendQueue=[];sourceBuffer=null;sourceOpen=false;if(remoteUrl)URL.revokeObjectURL(remoteUrl);remoteUrl=null;remoteVideo.removeAttribute("src");remoteVideo.load();watchBtn.textContent="Watch";watchBtn.classList.remove("primary")}
-function stopAll(){stopDataVideo();stopViewer();stopCanvasPump();clearInterval(readyTimer);readyTimer=null;if(localStream)localStream.getTracks().forEach(t=>t.stop());localStream=null;localVideo.srcObject=null;localVideo.classList.add("hidden");streamCanvas.classList.add("hidden");remoteVideo.classList.add("hidden");placeholder.classList.remove("hidden");startBtn.classList.remove("hidden");watchBtn.classList.remove("hidden");stopBtn.classList.add("hidden");setStatus("Stopped","Start camera on one device. Press Watch on the other.")}
-fullscreenBtn.onclick=()=>{(videoCard.requestFullscreen?videoCard.requestFullscreen():remoteVideo.webkitEnterFullscreen?.()).catch?.(()=>{})};startBtn.onclick=startCamera;watchBtn.onclick=watch;stopBtn.onclick=stopAll;cameraSelect.onchange=()=>{if(role==="camera")startCamera()};loadCameras();log("V7 ready. Room "+ROOM);
-})();
-</script>
+
+  <section class="panel" id="panel" aria-label="Configuration menu">
+    <h2>Configuration</h2>
+
+    <label>
+      Camera source on this device
+      <select id="cameraSelect"></select>
+    </label>
+
+    <label>
+      Direct feed FPS
+      <select id="fpsSelect">
+        <option value="15">15 fps - safest</option>
+        <option value="20" selected>20 fps - recommended</option>
+        <option value="24">24 fps</option>
+        <option value="30">30 fps - heavier</option>
+      </select>
+    </label>
+
+    <label>
+      Clock size
+      <input id="sizeSlider" type="range" min="7" max="32" step="0.5" value="23" />
+    </label>
+
+    <label>
+      Clock font
+      <select id="fontSelect">
+        <option value="Poiret One">Poiret One</option>
+        <option value="Major Mono Display">Major Mono Display</option>
+        <option value="Cinzel">Cinzel</option>
+      </select>
+    </label>
+
+    <label>
+      Background mood
+      <select id="moodSelect">
+        <option value="aurora">Aurora</option>
+        <option value="midnight">Midnight</option>
+        <option value="warm">Warm glass</option>
+      </select>
+    </label>
+
+    <div class="actions">
+      <button class="btn primary" id="reconnectBtn" type="button">Reconnect</button>
+      <button class="btn" id="copyLinkBtn" type="button">Copy app link</button>
+      <button class="btn" id="resetClockBtn" type="button">Reset clock</button>
+    </div>
+
+    <div class="fineprint" id="debugText">UI ready.</div>
+  </section>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const $ = (id) => document.getElementById(id);
+      const stage = $("stage");
+      const clock = $("clock");
+      const clockShell = $("clockShell");
+      const clockResizeHandle = $("clockResizeHandle");
+      const seconds = $("seconds");
+      const statusDot = $("statusDot");
+      const roomLabel = $("roomLabel");
+      const configBtn = $("configBtn");
+      const panel = $("panel");
+      const startBtn = $("startBtn");
+      const stopBtn = $("stopBtn");
+      const watchBtn = $("watchBtn");
+      const fullscreenBtn = $("fullscreenBtn");
+      const exitFullscreenBtn = $("exitFullscreenBtn");
+      const localVideo = $("localVideo");
+      const streamCanvas = $("streamCanvas");
+      const sourceVideo = $("sourceVideo");
+      const remoteVideo = $("remoteVideo");
+      const remoteFrameImage = $("remoteFrameImage");
+      const placeholder = $("placeholder");
+      const videoCard = $("videoCard");
+      const connectionText = $("connectionText");
+      const cameraSelect = $("cameraSelect");
+      const compatToggle = $("compatToggle");
+      const fpsSelect = $("fpsSelect");
+      const sizeSlider = $("sizeSlider");
+      const fontSelect = $("fontSelect");
+      const moodSelect = $("moodSelect");
+      const reconnectBtn = $("reconnectBtn");
+      const copyLinkBtn = $("copyLinkBtn");
+      const resetClockBtn = $("resetClockBtn");
+      const debugText = $("debugText");
+      const viewerTitle = $("viewerTitle");
+      const viewerText = $("viewerText");
+
+      const params = new URLSearchParams(location.search);
+      const ROOM_ID = params.get("room") || "td-clockcam-direct-room";
+      const CLIENT_ID = `web-${Math.random().toString(36).slice(2, 9)}-${Date.now().toString(36).slice(-4)}`;
+      const CHANNEL_NAME = `clockcam:${ROOM_ID}`;
+
+      const ICE_CONFIG = {
+        iceServers: [
+          { urls: "stun:stun.l.google.com:19302" },
+          { urls: "stun:stun1.l.google.com:19302" },
+          { urls: "stun:global.stun.twilio.com:3478" },
+          { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+          { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+          { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
+        ],
+        iceCandidatePoolSize: 4
+      };
+
+      let ably = null;
+      let channel = null;
+      let signalReady = false;
+      let role = "idle";
+      let localStream = null;
+      let outgoingStream = null;
+      let canvas = null;
+      let canvasCtx = null;
+      let drawRaf = null;
+      let drawTimer = null;
+      let canvasCaptureTrack = null;
+      let localCameras = [];
+      let activeDeviceId = "";
+      let cameraReadyTimer = null;
+      let viewerPc = null;
+      let viewerSessionId = null;
+      let viewerCandidateQueue = [];
+      let cameraPeerConnections = new Map();
+      let cameraCandidateQueue = new Map();
+      let cameraFrameChannels = new Set();
+      let frameSendTimer = null;
+      let frameSendBusy = false;
+      let viewerFrameChannel = null;
+      let lastFrameUrl = null;
+      let seenSignals = new Set();
+      let drag = null;
+      let logHistory = [];
+
+      function log(message) {
+        console.log(`[direct-camera] ${message}`);
+        const ts = new Date().toLocaleTimeString();
+        logHistory.push(`[${ts}] ${message}`);
+        if (logHistory.length > 38) logHistory.shift();
+        debugText.textContent = logHistory.join("\n");
+        debugText.scrollTop = debugText.scrollHeight;
+      }
+
+      function setStatus(title, text, live = false) {
+        viewerTitle.textContent = title;
+        viewerText.textContent = text;
+        connectionText.textContent = text;
+        statusDot.classList.toggle("live", live);
+      }
+
+      function isPhoneViewer() {
+        return window.matchMedia("(max-width: 760px) and (pointer: coarse)").matches;
+      }
+
+      function applyDeviceMode() {
+        document.body.classList.toggle("phone-viewer", isPhoneViewer());
+      }
+
+      function updateClock() {
+        const now = new Date();
+        clock.innerHTML = `${String(now.getHours()).padStart(2, "0")}<br>${String(now.getMinutes()).padStart(2, "0")}`;
+        seconds.textContent = String(now.getSeconds()).padStart(2, "0");
+      }
+
+      function clampBox(left, top, width, height) {
+        const stageRect = stage.getBoundingClientRect();
+        const minWidth = Math.min(220, Math.max(120, stageRect.width - 8));
+        const minHeight = Math.min(230, Math.max(140, stageRect.height - 8));
+        const maxWidth = Math.max(minWidth, stageRect.width - 8);
+        const maxHeight = Math.max(minHeight, stageRect.height - 8);
+        const safeWidth = Math.min(maxWidth, Math.max(minWidth, width));
+        const safeHeight = Math.min(maxHeight, Math.max(minHeight, height));
+        const safeLeft = Math.min(Math.max(0, stageRect.width - safeWidth), Math.max(0, left));
+        const safeTop = Math.min(Math.max(0, stageRect.height - safeHeight), Math.max(0, top));
+        return { left: safeLeft, top: safeTop, width: safeWidth, height: safeHeight };
+      }
+
+      function setClockBox(left, top, width, height, save = true) {
+        const box = clampBox(left, top, width, height);
+        clockShell.style.left = `${box.left}px`;
+        clockShell.style.top = `${box.top}px`;
+        clockShell.style.width = `${box.width}px`;
+        clockShell.style.height = `${box.height}px`;
+        const rem = Math.max(7, Math.min(32, Math.min(box.width, box.height) / 25));
+        document.documentElement.style.setProperty("--clock-size", `${rem.toFixed(1)}rem`);
+        sizeSlider.value = String(rem.toFixed(1));
+        if (save) localStorage.setItem("clock-box-direct-v1", JSON.stringify(box));
+        return box;
+      }
+
+      function resetClockBox() {
+        const stageRect = stage.getBoundingClientRect();
+        const width = Math.min(760, Math.max(320, stageRect.width * 0.68));
+        const height = Math.min(680, Math.max(320, stageRect.height * 0.68));
+        setClockBox((stageRect.width - width) / 2, (stageRect.height - height) / 2, width, height);
+      }
+
+      function restoreClockBox() {
+        requestAnimationFrame(() => {
+          try {
+            const saved = JSON.parse(localStorage.getItem("clock-box-direct-v1") || "null");
+            if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top) && Number.isFinite(saved.width) && Number.isFinite(saved.height)) {
+              setClockBox(saved.left, saved.top, saved.width, saved.height);
+              return;
+            }
+          } catch {}
+          resetClockBox();
+        });
+      }
+
+      function enableClockMoveAndResize() {
+        function begin(e, mode) {
+          if (isPhoneViewer()) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const shellRect = clockShell.getBoundingClientRect();
+          const stageRect = stage.getBoundingClientRect();
+          drag = { mode, id: e.pointerId, startX: e.clientX, startY: e.clientY, left: shellRect.left - stageRect.left, top: shellRect.top - stageRect.top, width: shellRect.width, height: shellRect.height };
+          clockShell.classList.add("dragging");
+          clockShell.setPointerCapture(e.pointerId);
+        }
+        clockShell.addEventListener("pointerdown", (e) => begin(e, "move"));
+        clockResizeHandle.addEventListener("pointerdown", (e) => begin(e, "resize"));
+        clockShell.addEventListener("pointermove", (e) => {
+          if (!drag || drag.id !== e.pointerId) return;
+          e.preventDefault();
+          const dx = e.clientX - drag.startX;
+          const dy = e.clientY - drag.startY;
+          if (drag.mode === "resize") setClockBox(drag.left, drag.top, drag.width + dx, drag.height + dy);
+          else setClockBox(drag.left + dx, drag.top + dy, drag.width, drag.height);
+        });
+        function end(e) {
+          if (!drag || drag.id !== e.pointerId) return;
+          drag = null;
+          clockShell.classList.remove("dragging");
+        }
+        clockShell.addEventListener("pointerup", end);
+        clockShell.addEventListener("pointercancel", end);
+      }
+
+      async function connectSignaling() {
+        if (signalReady && channel) return;
+        if (!window.Ably) throw new Error("Ably script did not load. Check internet access or the CDN.");
+
+        setStatus("Connecting…", "Connecting to realtime signaling…");
+        log(`Connecting to Ably channel ${CHANNEL_NAME}`);
+
+        // V4: do NOT manually validate the token response in the app.
+        // Your token route already returns the correct Ably TokenRequest with a "mac" field.
+        // Let Ably fetch and parse it directly, which avoids false "invalid token" errors.
+        const tokenUrl = `/api/ably-token?clientId=${encodeURIComponent(CLIENT_ID)}&t=${Date.now()}`;
+        log(`Using Ably authUrl: ${tokenUrl}`);
+
+        try { ably?.close?.(); } catch {}
+        ably = new Ably.Realtime({
+          authUrl: tokenUrl,
+          clientId: CLIENT_ID,
+          autoConnect: true,
+          recover: (lastConnectionDetails, cb) => cb(true),
+          // Some in-car browsers are bad with WebSockets. Let Ably fall back.
+          transports: ["web_socket", "xhr_streaming", "xhr_polling"]
+        });
+
+        ably.connection.on((stateChange) => {
+          const reason = stateChange.reason?.message || stateChange.reason?.code || "";
+          log(`Ably: ${stateChange.previous} → ${stateChange.current}${reason ? ` (${reason})` : ""}`);
+        });
+
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error("Realtime signaling timed out after 45s. The car browser/network may be blocking Ably realtime traffic.")), 45000);
+          ably.connection.once("connected", () => { clearTimeout(timeout); resolve(); });
+          ably.connection.once("failed", (stateChange) => { clearTimeout(timeout); reject(new Error(stateChange.reason?.message || "Ably connection failed.")); });
+          ably.connection.once("suspended", (stateChange) => { clearTimeout(timeout); reject(new Error(stateChange.reason?.message || "Ably connection suspended.")); });
+        });
+
+        channel = ably.channels.get(CHANNEL_NAME);
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error("Channel attach timed out after 20s.")), 20000);
+          channel.attach((err) => {
+            clearTimeout(timeout);
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+
+        channel.subscribe("signal", (message) => handleSignal(message.data));
+        signalReady = true;
+        roomLabel.textContent = `Direct room: ${ROOM_ID} · V6 manual canvas`;
+        log(`Signaling ready as ${CLIENT_ID}`);
+      }
+
+      function publishSignal(type, to, payload = {}, sessionId = "") {
+        if (!channel) return;
+        const msg = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          room: ROOM_ID,
+          from: CLIENT_ID,
+          to,
+          type,
+          sessionId,
+          payload,
+          ts: Date.now()
+        };
+        channel.publish("signal", msg, (err) => {
+          if (err) log(`Signal publish failed (${type}): ${err.message || err}`);
+        });
+      }
+
+      async function handleSignal(msg) {
+        try {
+          if (!msg || msg.room !== ROOM_ID || msg.from === CLIENT_ID) return;
+          if (seenSignals.has(msg.id)) return;
+          seenSignals.add(msg.id);
+          if (seenSignals.size > 1000) seenSignals = new Set([...seenSignals].slice(-400));
+
+          const isForMe = msg.to === CLIENT_ID || msg.to === "all" || (role === "camera" && msg.to === "camera");
+          if (!isForMe) return;
+
+          if (msg.type === "camera-ready" && role !== "camera") {
+            setStatus("Camera online", "Camera device is ready. Press Watch to connect.", true);
+            watchBtn.textContent = "Watch ●";
+            watchBtn.classList.add("primary");
+            return;
+          }
+
+          if (role === "camera") await handleCameraSignal(msg);
+          if (role === "viewer") await handleViewerSignal(msg);
+        } catch (err) {
+          log(`Signal handling error: ${err.message || err}`);
+        }
+      }
+
+      async function loadCameras() {
+        cameraSelect.innerHTML = `<option value="">Default camera</option>`;
+        localCameras = [];
+        try {
+          if (!navigator.mediaDevices?.enumerateDevices) return [];
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          localCameras = devices.filter((d) => d.kind === "videoinput").map((camera, index) => ({
+            deviceId: camera.deviceId,
+            label: camera.label || `Camera ${index + 1}`
+          }));
+          localCameras.forEach((camera) => {
+            const option = document.createElement("option");
+            option.value = camera.deviceId;
+            option.textContent = camera.label;
+            cameraSelect.appendChild(option);
+          });
+          if (activeDeviceId) cameraSelect.value = activeDeviceId;
+          return localCameras;
+        } catch (err) {
+          log(`Camera list unavailable: ${err.message}`);
+          return [];
+        }
+      }
+
+      async function getCameraStream(deviceId = "") {
+        const video = deviceId
+          ? { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } }
+          : { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } };
+        return navigator.mediaDevices.getUserMedia({ video, audio: false });
+      }
+
+      function waitForVideoReady(video) {
+        return new Promise((resolve) => {
+          if (video.readyState >= 2 && video.videoWidth > 0) return resolve();
+          const done = () => { video.removeEventListener("loadedmetadata", done); video.removeEventListener("canplay", done); resolve(); };
+          video.addEventListener("loadedmetadata", done, { once: true });
+          video.addEventListener("canplay", done, { once: true });
+          setTimeout(resolve, 1200);
+        });
+      }
+
+      async function createOutgoingStreamFromPreview() {
+        stopCanvasPump();
+        if (!compatToggle.checked || typeof HTMLCanvasElement.prototype.captureStream !== "function") {
+          streamCanvas.classList.add("hidden");
+          log("Using raw camera WebRTC track.");
+          return localStream;
+        }
+
+        // V6: manual canvas frames.
+        // Some embedded/car browsers produce a valid WebRTC connection but never
+        // push frames from canvas.captureStream(fps). captureStream(0) +
+        // CanvasCaptureMediaStreamTrack.requestFrame() is more reliable because
+        // we explicitly request every video frame after drawing it.
+        await localVideo.play().catch(() => {});
+        await waitForVideoReady(localVideo);
+
+        const track = localStream.getVideoTracks()[0];
+        const settings = track?.getSettings?.() || {};
+        const sourceWidth = localVideo.videoWidth || settings.width || 1280;
+        const sourceHeight = localVideo.videoHeight || settings.height || 720;
+        const maxWidth = 960;
+        const scale = Math.min(1, maxWidth / sourceWidth);
+        const width = Math.max(320, Math.round(sourceWidth * scale));
+        const height = Math.max(180, Math.round(sourceHeight * scale));
+
+        canvas = streamCanvas;
+        canvas.width = width;
+        canvas.height = height;
+        canvas.classList.remove("hidden");
+        canvasCtx = canvas.getContext("2d", { alpha: false, willReadFrequently: false });
+
+        const fps = Number(fpsSelect.value) || 15;
+        const stream = canvas.captureStream(0);
+        canvasCaptureTrack = stream.getVideoTracks()[0] || null;
+        if (canvasCaptureTrack) canvasCaptureTrack.contentHint = "motion";
+
+        let frameNo = 0;
+        let lastCameraDrawOk = false;
+
+        function drawOneFrame() {
+          if (!localStream || !canvasCtx || !canvas) return;
+          frameNo += 1;
+          try {
+            canvasCtx.fillStyle = "#050711";
+            canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+            lastCameraDrawOk = false;
+            if (localVideo.readyState >= 2 && localVideo.videoWidth > 0 && localVideo.videoHeight > 0) {
+              canvasCtx.drawImage(localVideo, 0, 0, canvas.width, canvas.height);
+              lastCameraDrawOk = true;
+            }
+
+            // Big bright diagnostic overlay. If the viewer sees this, WebRTC and
+            // canvas streaming work. If the viewer sees pure black, the browser is
+            // not sending encoded canvas frames at all.
+            canvasCtx.fillStyle = "rgba(255,255,255,0.92)";
+            canvasCtx.fillRect(18, 18, Math.min(canvas.width - 36, 620), 104);
+            canvasCtx.fillStyle = "#07111f";
+            canvasCtx.font = "bold 28px system-ui, -apple-system, Segoe UI, sans-serif";
+            canvasCtx.fillText("V6 MANUAL CANVAS LIVE", 36, 56);
+            canvasCtx.font = "20px system-ui, -apple-system, Segoe UI, sans-serif";
+            canvasCtx.fillText(`${new Date().toLocaleTimeString()} · frame ${frameNo}`, 36, 86);
+            canvasCtx.fillText(lastCameraDrawOk ? "camera draw: OK" : "camera draw: waiting", 36, 112);
+
+            // Force delivery of this exact drawn frame.
+            if (canvasCaptureTrack && typeof canvasCaptureTrack.requestFrame === "function") {
+              canvasCaptureTrack.requestFrame();
+            }
+          } catch (err) {
+            log(`Canvas draw warning: ${err.message || err}`);
+          }
+        }
+
+        // Draw a few frames immediately before the viewer can receive the track.
+        drawOneFrame();
+        drawOneFrame();
+        drawTimer = setInterval(drawOneFrame, Math.max(66, Math.round(1000 / fps)));
+
+        log(`Using V6 manual requestFrame canvas WebRTC stream: ${width}x${height} @ ${fps}fps.`);
+        return stream;
+      }
+
+      function stopCanvasPump() {
+        if (drawRaf) cancelAnimationFrame(drawRaf);
+        drawRaf = null;
+        if (drawTimer) clearInterval(drawTimer);
+        drawTimer = null;
+        canvasCaptureTrack = null;
+        streamCanvas.classList.add("hidden");
+        canvas = null;
+        canvasCtx = null;
+        if (outgoingStream && outgoingStream !== localStream) {
+          outgoingStream.getTracks().forEach((track) => track.stop());
+        }
+        outgoingStream = null;
+      }
+
+      async function startCamera() {
+        try {
+          if (!navigator.mediaDevices?.getUserMedia) throw new Error("Camera access is not supported in this browser.");
+          stopAllConnections(false);
+          role = "camera";
+          activeDeviceId = cameraSelect.value || "";
+          setStatus("Starting camera…", "Requesting camera access first…");
+
+          // Start the actual camera BEFORE realtime signaling. This proves the
+          // car/capture camera works locally even if Ably/Vercel setup is wrong.
+          localStream = await getCameraStream(activeDeviceId);
+          const actualDeviceId = localStream.getVideoTracks()[0]?.getSettings?.().deviceId;
+          if (!activeDeviceId && actualDeviceId) activeDeviceId = actualDeviceId;
+
+          sourceVideo.srcObject = localStream;
+          localVideo.srcObject = localStream;
+          localVideo.classList.remove("hidden");
+          remoteVideo.classList.add("hidden");
+          placeholder.classList.add("hidden");
+          await sourceVideo.play().catch(() => {});
+          await localVideo.play().catch(() => {});
+          await loadCameras();
+          outgoingStream = await createOutgoingStreamFromPreview();
+
+          startBtn.classList.add("hidden");
+          watchBtn.classList.add("hidden");
+          stopBtn.classList.remove("hidden");
+          statusDot.classList.add("live");
+          setStatus("Camera preview works", "Camera is on. Connecting realtime signaling now…", true);
+
+          await connectSignaling();
+
+          setStatus("Camera live", "Camera is ready. Viewer can press Watch now.", true);
+          publishSignal("camera-ready", "all", { clientId: CLIENT_ID, label: cameraSelect.selectedOptions[0]?.textContent || "Camera" });
+          clearInterval(cameraReadyTimer);
+          cameraReadyTimer = setInterval(() => publishSignal("camera-ready", "all", { clientId: CLIENT_ID }), 4000);
+          log("Camera started. Waiting for viewer offer.");
+        } catch (err) {
+          const message = err.message || String(err);
+          alert(`Could not start camera/signaling: ${message}`);
+          log(`Start camera/signaling failed: ${message}`);
+          // Keep the local preview visible if camera already started; it helps debug.
+          if (!localStream) stopAllConnections(true);
+          else setStatus("Camera preview only", "Camera works locally, but realtime signaling failed. Check debug log / ABLY_API_KEY.", true);
+        }
+      }
+
+      function stopFrameDataSender() {
+        if (frameSendTimer) clearInterval(frameSendTimer);
+        frameSendTimer = null;
+        frameSendBusy = false;
+        cameraFrameChannels.forEach((dc) => { try { dc.close(); } catch {} });
+        cameraFrameChannels.clear();
+      }
+
+      function startFrameDataSender(dc) {
+        if (!dc) return;
+        cameraFrameChannels.add(dc);
+        log("V8 frame data channel connected.");
+        try { dc.send(JSON.stringify({ type: "v8-frame-mode", fps: 8, quality: 0.64 })); } catch {}
+
+        dc.addEventListener("close", () => {
+          cameraFrameChannels.delete(dc);
+          log("V8 frame data channel closed.");
+        });
+
+        if (frameSendTimer) return;
+        frameSendTimer = setInterval(() => {
+          if (frameSendBusy) return;
+          if (!canvas || !canvas.width || !canvas.height) return;
+          const openChannels = [...cameraFrameChannels].filter((ch) => ch.readyState === "open");
+          if (!openChannels.length) return;
+          // Drop frames rather than queueing forever. Keeps latency low.
+          if (openChannels.some((ch) => ch.bufferedAmount > 900000)) return;
+
+          frameSendBusy = true;
+          try {
+            canvas.toBlob(async (blob) => {
+              try {
+                if (!blob) return;
+                const buf = await blob.arrayBuffer();
+                for (const ch of openChannels) {
+                  if (ch.readyState === "open" && ch.bufferedAmount < 900000) ch.send(buf);
+                }
+              } catch (err) {
+                log(`V8 frame send warning: ${err.message || err}`);
+              } finally {
+                frameSendBusy = false;
+              }
+            }, "image/jpeg", 0.64);
+          } catch (err) {
+            frameSendBusy = false;
+            log(`V8 canvas JPEG warning: ${err.message || err}`);
+          }
+        }, 125); // about 8fps, direct peer-to-peer, no Vercel Blob usage
+      }
+
+      function handleViewerFrameData(data) {
+        if (typeof data === "string") {
+          try {
+            const msg = JSON.parse(data);
+            if (msg.type === "v8-frame-mode") log(`V8 direct data-frame mode active: ${msg.fps}fps q${msg.quality}`);
+          } catch {}
+          return;
+        }
+
+        const blob = data instanceof Blob ? data : new Blob([data], { type: "image/jpeg" });
+        const url = URL.createObjectURL(blob);
+        const oldUrl = lastFrameUrl;
+        lastFrameUrl = url;
+        remoteFrameImage.onload = () => { if (oldUrl) URL.revokeObjectURL(oldUrl); };
+        remoteFrameImage.src = url;
+        remoteFrameImage.classList.remove("hidden");
+        remoteVideo.classList.add("hidden");
+        localVideo.classList.add("hidden");
+        streamCanvas.classList.add("hidden");
+        placeholder.classList.add("hidden");
+        setStatus("Watching live", "V8 direct data-frame feed connected. This bypasses the car black video-track bug.", true);
+      }
+
+      async function handleCameraSignal(msg) {
+        if (msg.type === "offer") {
+          const viewerId = msg.from;
+          const sessionId = msg.sessionId;
+          log(`Offer received from ${viewerId}.`);
+
+          let pc = cameraPeerConnections.get(sessionId);
+          if (pc) {
+            try { pc.close(); } catch {}
+            cameraPeerConnections.delete(sessionId);
+          }
+
+          pc = new RTCPeerConnection(ICE_CONFIG);
+          cameraPeerConnections.set(sessionId, pc);
+
+          pc.ondatachannel = (event) => {
+            if (event.channel?.label === "v8-frame-data") {
+              const dc = event.channel;
+              dc.binaryType = "arraybuffer";
+              dc.onopen = () => startFrameDataSender(dc);
+              dc.onclose = () => cameraFrameChannels.delete(dc);
+              dc.onerror = (err) => log(`V8 data channel warning: ${err.message || err}`);
+            }
+          };
+
+          const stream = outgoingStream || localStream;
+          if (!stream) {
+            log("Offer ignored: no camera stream is active.");
+            return;
+          }
+          stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+          pc.onicecandidate = (event) => {
+            if (event.candidate) publishSignal("ice", viewerId, event.candidate.toJSON(), sessionId);
+          };
+
+          pc.onconnectionstatechange = () => {
+            log(`Camera peer state: ${pc.connectionState}`);
+            if (pc.connectionState === "connected") setStatus("Streaming", "Direct WebRTC feed connected to viewer.", true);
+            if (["failed", "closed", "disconnected"].includes(pc.connectionState)) {
+              setStatus("Camera live", "Viewer disconnected. Waiting for another viewer.", true);
+            }
+          };
+
+          await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+          const queued = cameraCandidateQueue.get(sessionId) || [];
+          cameraCandidateQueue.delete(sessionId);
+          for (const candidate of queued) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch((e) => log(`Queued ICE warning: ${e.message || e}`));
+
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          publishSignal("answer", viewerId, pc.localDescription.toJSON(), sessionId);
+          log(`Answer sent to ${viewerId}.`);
+        }
+
+        if (msg.type === "ice") {
+          const pc = cameraPeerConnections.get(msg.sessionId);
+          if (pc && pc.remoteDescription) {
+            await pc.addIceCandidate(new RTCIceCandidate(msg.payload)).catch((e) => log(`Camera ICE warning: ${e.message || e}`));
+          } else {
+            const list = cameraCandidateQueue.get(msg.sessionId) || [];
+            list.push(msg.payload);
+            cameraCandidateQueue.set(msg.sessionId, list);
+          }
+        }
+
+        if (msg.type === "viewer-left") {
+          const pc = cameraPeerConnections.get(msg.sessionId);
+          if (pc) pc.close();
+          cameraPeerConnections.delete(msg.sessionId);
+        }
+      }
+
+      async function watchDirectFeed() {
+        try {
+          await connectSignaling();
+          stopViewerOnly();
+          role = "viewer";
+          viewerSessionId = `${CLIENT_ID}-${Date.now().toString(36)}`;
+          viewerCandidateQueue = [];
+          viewerPc = new RTCPeerConnection(ICE_CONFIG);
+
+          viewerFrameChannel = viewerPc.createDataChannel("v8-frame-data", { ordered: false, maxRetransmits: 0 });
+          viewerFrameChannel.binaryType = "arraybuffer";
+          viewerFrameChannel.onopen = () => log("V8 frame data channel open.");
+          viewerFrameChannel.onmessage = (event) => handleViewerFrameData(event.data);
+          viewerFrameChannel.onerror = (err) => log(`V8 frame data channel warning: ${err.message || err}`);
+
+          viewerPc.addTransceiver("video", { direction: "recvonly" });
+
+          viewerPc.ontrack = async (event) => {
+            const stream = event.streams[0] || new MediaStream([event.track]);
+            log(`Remote track received: ${event.track.kind}.`);
+            remoteVideo.srcObject = stream;
+            remoteVideo.classList.remove("hidden");
+            localVideo.classList.add("hidden");
+            streamCanvas.classList.add("hidden");
+            placeholder.classList.add("hidden");
+            await remoteVideo.play().catch((err) => log(`remoteVideo.play warning: ${err.message || err}`));
+            setStatus("Watching live", "Direct camera feed connected.", true);
+          };
+
+          viewerPc.onicecandidate = (event) => {
+            if (event.candidate) publishSignal("ice", "camera", event.candidate.toJSON(), viewerSessionId);
+          };
+
+          viewerPc.oniceconnectionstatechange = () => log(`Viewer ICE state: ${viewerPc.iceConnectionState}`);
+          viewerPc.onconnectionstatechange = () => {
+            log(`Viewer peer state: ${viewerPc.connectionState}`);
+            if (viewerPc.connectionState === "connected") setStatus("Watching live", "Direct WebRTC feed connected.", true);
+            if (viewerPc.connectionState === "failed") setStatus("Connection failed", "Direct WebRTC failed. Try Reconnect or use same Wi‑Fi / stronger TURN.");
+            if (["closed", "disconnected"].includes(viewerPc.connectionState)) setStatus("Disconnected", "Camera feed disconnected.");
+          };
+
+          const offer = await viewerPc.createOffer();
+          await viewerPc.setLocalDescription(offer);
+          publishSignal("offer", "camera", viewerPc.localDescription.toJSON(), viewerSessionId);
+
+          watchBtn.textContent = "Watching…";
+          watchBtn.classList.add("primary");
+          placeholder.classList.remove("hidden");
+          placeholder.innerHTML = `<div><strong>Connecting…</strong>Waiting for the camera device to answer.</div>`;
+          setStatus("Connecting…", "Offer sent. Waiting for camera answer…");
+          log(`Offer sent. Session ${viewerSessionId}`);
+        } catch (err) {
+          alert(`Could not watch: ${err.message || err}`);
+          log(`Watch failed: ${err.message || err}`);
+          stopViewerOnly();
+        }
+      }
+
+      async function handleViewerSignal(msg) {
+        if (!viewerPc || msg.sessionId !== viewerSessionId) return;
+
+        if (msg.type === "answer") {
+          log("Answer received from camera.");
+          await viewerPc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+          for (const candidate of viewerCandidateQueue) {
+            await viewerPc.addIceCandidate(new RTCIceCandidate(candidate)).catch((e) => log(`Queued viewer ICE warning: ${e.message || e}`));
+          }
+          viewerCandidateQueue = [];
+          return;
+        }
+
+        if (msg.type === "ice") {
+          if (viewerPc.remoteDescription) {
+            await viewerPc.addIceCandidate(new RTCIceCandidate(msg.payload)).catch((e) => log(`Viewer ICE warning: ${e.message || e}`));
+          } else {
+            viewerCandidateQueue.push(msg.payload);
+          }
+        }
+      }
+
+      async function switchCamera() {
+        if (role !== "camera") return;
+        try {
+          activeDeviceId = cameraSelect.value || "";
+          setStatus("Switching camera…", "Rebuilding outgoing feed…", true);
+          const newStream = await getCameraStream(activeDeviceId);
+          if (localStream) localStream.getTracks().forEach((track) => track.stop());
+          stopCanvasPump();
+          localStream = newStream;
+          sourceVideo.srcObject = newStream;
+          localVideo.srcObject = newStream;
+          await sourceVideo.play().catch(() => {});
+          await localVideo.play().catch(() => {});
+          outgoingStream = await createOutgoingStreamFromPreview();
+          await loadCameras();
+
+          // Replace tracks for currently connected viewers.
+          const newTrack = outgoingStream.getVideoTracks()[0];
+          cameraPeerConnections.forEach((pc) => {
+            const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+            if (sender && newTrack) sender.replaceTrack(newTrack).catch((err) => log(`replaceTrack warning: ${err.message || err}`));
+          });
+          setStatus("Camera live", "Camera switched. Viewer feed updated.", true);
+        } catch (err) {
+          log(`Camera switch failed: ${err.message || err}`);
+          setStatus("Camera switch failed", err.message || String(err), true);
+        }
+      }
+
+      function stopViewerOnly() {
+        try { if (viewerSessionId) publishSignal("viewer-left", "camera", {}, viewerSessionId); } catch {}
+        try { viewerFrameChannel?.close?.(); } catch {}
+        viewerFrameChannel = null;
+        try { viewerPc?.close?.(); } catch {}
+        viewerPc = null;
+        viewerSessionId = null;
+        viewerCandidateQueue = [];
+        remoteVideo.srcObject = null;
+        remoteVideo.classList.add("hidden");
+        remoteFrameImage.classList.add("hidden");
+        remoteFrameImage.removeAttribute("src");
+        if (lastFrameUrl) URL.revokeObjectURL(lastFrameUrl);
+        lastFrameUrl = null;
+        watchBtn.textContent = "Watch";
+        watchBtn.classList.remove("primary");
+      }
+
+      function stopAllConnections(resetUi = true) {
+        clearInterval(cameraReadyTimer);
+        cameraReadyTimer = null;
+        stopViewerOnly();
+        stopFrameDataSender();
+        cameraPeerConnections.forEach((pc) => { try { pc.close(); } catch {} });
+        cameraPeerConnections.clear();
+        cameraCandidateQueue.clear();
+        stopCanvasPump();
+        if (localStream) localStream.getTracks().forEach((track) => track.stop());
+        localStream = null;
+        localVideo.srcObject = null;
+        sourceVideo.srcObject = null;
+        localVideo.classList.add("hidden");
+        streamCanvas.classList.add("hidden");
+        role = "idle";
+        startBtn.classList.remove("hidden");
+        watchBtn.classList.remove("hidden");
+        stopBtn.classList.add("hidden");
+        statusDot.classList.remove("live");
+        if (resetUi) {
+          placeholder.classList.remove("hidden");
+          placeholder.innerHTML = `<div><strong>No live feed yet</strong>Start camera on one device. Press Watch on the other.</div>`;
+          setStatus("Ready", "Start camera on the car/camera device. Press Watch on the screen device.");
+        }
+      }
+
+      function getActiveVisual() {
+        if (!remoteFrameImage.classList.contains("hidden")) return remoteFrameImage;
+        if (!remoteVideo.classList.contains("hidden")) return remoteVideo;
+        if (!localVideo.classList.contains("hidden")) return localVideo;
+        return null;
+      }
+
+      async function openFullscreenCamera() {
+        const active = getActiveVisual();
+        if (!active) {
+          alert("Start or watch a camera feed first.");
+          return;
+        }
+        try {
+          if (active.tagName === "VIDEO") await active.play().catch(() => {});
+          if (videoCard.requestFullscreen) await videoCard.requestFullscreen({ navigationUI: "hide" });
+          else if (active.webkitEnterFullscreen) active.webkitEnterFullscreen();
+          if (isPhoneViewer() && screen.orientation?.lock) await screen.orientation.lock("landscape").catch(() => {});
+        } catch (err) {
+          alert(`Fullscreen blocked: ${err.message}`);
+        }
+      }
+
+      function exitFullscreen() {
+        if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      }
+
+      function applyMood(mood) {
+        document.body.style.background = mood === "midnight" ? "#03040a" : mood === "warm" ? "#120907" : "#050711";
+      }
+
+      function bindButtons() {
+        startBtn.addEventListener("click", startCamera);
+        stopBtn.addEventListener("click", () => stopAllConnections(true));
+        watchBtn.addEventListener("click", watchDirectFeed);
+        fullscreenBtn.addEventListener("click", openFullscreenCamera);
+        exitFullscreenBtn.addEventListener("click", exitFullscreen);
+        configBtn.addEventListener("click", () => panel.classList.toggle("open"));
+        resetClockBtn.addEventListener("click", resetClockBox);
+
+        cameraSelect.addEventListener("change", switchCamera);
+        fpsSelect.addEventListener("change", async () => {
+          if (role === "camera" && localStream) {
+            outgoingStream = await createOutgoingStreamFromPreview();
+            const newTrack = outgoingStream.getVideoTracks()[0];
+            cameraPeerConnections.forEach((pc) => {
+              const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+              if (sender && newTrack) sender.replaceTrack(newTrack).catch(() => {});
+            });
+          }
+        });
+
+        compatToggle.addEventListener("change", async () => {
+          if (role === "camera" && localStream) {
+            outgoingStream = await createOutgoingStreamFromPreview();
+            const newTrack = outgoingStream.getVideoTracks()[0];
+            cameraPeerConnections.forEach((pc) => {
+              const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+              if (sender && newTrack) sender.replaceTrack(newTrack).catch(() => {});
+            });
+          }
+        });
+
+        sizeSlider.addEventListener("input", () => {
+          document.documentElement.style.setProperty("--clock-size", `${sizeSlider.value}rem`);
+        });
+
+        fontSelect.addEventListener("change", () => {
+          document.documentElement.style.setProperty("--clock-font", `"${fontSelect.value}"`);
+        });
+
+        moodSelect.addEventListener("change", () => applyMood(moodSelect.value));
+
+        reconnectBtn.addEventListener("click", async () => {
+          log("Manual reconnect requested.");
+          const previousRole = role;
+          stopAllConnections(true);
+          if (previousRole === "camera") await startCamera();
+          if (previousRole === "viewer") await watchDirectFeed();
+        });
+
+        copyLinkBtn.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(location.href);
+            copyLinkBtn.textContent = "Copied";
+            setTimeout(() => copyLinkBtn.textContent = "Copy app link", 1200);
+          } catch {
+            prompt("Copy this link:", location.href);
+          }
+        });
+
+        document.addEventListener("keydown", (e) => {
+          if (e.key.toLowerCase() === "c") panel.classList.toggle("open");
+          if (e.key.toLowerCase() === "f") openFullscreenCamera();
+          if (e.key === "Escape") panel.classList.remove("open");
+        });
+
+        document.addEventListener("fullscreenchange", () => {
+          if (!document.fullscreenElement && screen.orientation?.unlock) {
+            try { screen.orientation.unlock(); } catch {}
+          }
+        });
+
+        window.addEventListener("resize", () => {
+          applyDeviceMode();
+          if (!isPhoneViewer()) {
+            const shellRect = clockShell.getBoundingClientRect();
+            const stageRect = stage.getBoundingClientRect();
+            setClockBox(shellRect.left - stageRect.left, shellRect.top - stageRect.top, shellRect.width, shellRect.height);
+          }
+        });
+
+        window.addEventListener("beforeunload", () => {
+          try { if (viewerSessionId) publishSignal("viewer-left", "camera", {}, viewerSessionId); } catch {}
+        });
+      }
+
+      async function boot() {
+        applyDeviceMode();
+        bindButtons();
+        enableClockMoveAndResize();
+        restoreClockBox();
+        updateClock();
+        setInterval(updateClock, 250);
+        await loadCameras();
+        roomLabel.textContent = `Direct room: ${ROOM_ID} · V6 manual canvas`;
+        log("UI ready. Direct WebRTC + Ably signaling. V4 authUrl token fix. No PeerJS. No Blob video.");
+      }
+
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+      else boot();
+    })();
+  </script>
 </body>
 </html>
