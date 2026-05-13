@@ -1,51 +1,15 @@
-# V9 Direct WebRTC + Ably signaling + TURN config
+# V11 Direct WebRTC TURN + Camera Selection
 
-This version keeps the actual camera feed as direct WebRTC video. Ably is only used for signaling.
+This version keeps the working V10 direct WebRTC + TURN `addTrack` flow, and restores:
 
-Your previous log showed:
+- Camera source selection before starting the camera
+- Camera switching while streaming via `RTCRtpSender.replaceTrack()`
+- Toggle to show/hide the local camera preview on the camera device
 
-```txt
-pc connectionState: connecting
-iceConnectionState: disconnected
-pc connectionState: failed
-```
+Keep Vercel env vars:
+- ABLY_API_KEY
+- TURN_URLS
+- TURN_USERNAME
+- TURN_CREDENTIAL
 
-That means the two browsers could signal, but they could not find a usable WebRTC network route. Discord works because Discord has its own ICE/TURN infrastructure. This project lets you add your own TURN relay.
-
-## Files
-
-```txt
-index.html
-package.json
-vercel.json
-api/ably-token.js
-api/ice.js
-```
-
-## Required Vercel env var
-
-```txt
-ABLY_API_KEY=your_ably_api_key
-```
-
-## Strongly recommended TURN env vars
-
-Use any TURN provider. Add these in Vercel Project Settings → Environment Variables:
-
-```txt
-TURN_URLS=turn:your-turn-host:3478,turns:your-turn-host:5349
-TURN_USERNAME=your-turn-username
-TURN_CREDENTIAL=your-turn-password
-```
-
-Then redeploy.
-
-## Test
-
-1. Open the app on the car screen.
-2. Press Start camera.
-3. Open the app on client 2.
-4. Press Watch.
-5. If Auto fails, set Connection mode to Force TURN relay and press Watch again.
-
-If Force TURN relay works, keep that mode for the car setup.
+Deploy, open the car/camera device, choose the camera source, press Start camera. On the viewer, press Watch. If the stream fails across networks, use Connection mode = Force TURN relay.
