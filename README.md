@@ -1,15 +1,17 @@
-# V11 Direct WebRTC TURN + Camera Selection
+# V13 Working feed + crop + clock focus
 
-This version keeps the working V10 direct WebRTC + TURN `addTrack` flow, and restores:
+Keeps the working V11 WebRTC/TURN `addTrack` camera feed.
 
-- Camera source selection before starting the camera
-- Camera switching while streaming via `RTCRtpSender.replaceTrack()`
-- Toggle to show/hide the local camera preview on the camera device
+Adds:
+- Camera source selector
+- Show/hide local preview toggle
+- Auto-crop green bottom band on viewer
+- Double press video feed for fullscreen
+- Draggable/resizable clock
+- Double press clock for fullscreen foliage clock mode
 
-Keep Vercel env vars:
+Keep the same Vercel env vars from V11/V10:
 - ABLY_API_KEY
 - TURN_URLS
 - TURN_USERNAME
 - TURN_CREDENTIAL
-
-Deploy, open the car/camera device, choose the camera source, press Start camera. On the viewer, press Watch. If the stream fails across networks, use Connection mode = Force TURN relay.
