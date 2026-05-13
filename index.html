@@ -311,6 +311,19 @@
       background: #000;
     }
 
+    .stream-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      background: #000;
+      z-index: 2;
+    }
+
+    .video-card video { position: relative; z-index: 1; }
+
     .source-video {
       position: fixed !important;
       left: -3px;
@@ -567,6 +580,7 @@
       <div class="video-card" id="videoCard">
         <video id="remoteVideo" autoplay playsinline muted class="hidden"></video>
         <video id="localVideo" autoplay muted playsinline class="hidden"></video>
+        <canvas id="streamCanvas" class="stream-canvas hidden"></canvas>
         <video id="sourceVideo" autoplay muted playsinline class="source-video"></video>
         <button class="btn fs-exit" id="exitFullscreenBtn" type="button">Exit fullscreen</button>
         <div class="video-placeholder" id="placeholder">
@@ -656,6 +670,7 @@
       const fullscreenBtn = $("fullscreenBtn");
       const exitFullscreenBtn = $("exitFullscreenBtn");
       const localVideo = $("localVideo");
+      const streamCanvas = $("streamCanvas");
       const sourceVideo = $("sourceVideo");
       const remoteVideo = $("remoteVideo");
       const placeholder = $("placeholder");
@@ -954,33 +969,58 @@
       async function createOutgoingStreamFromPreview() {
         stopCanvasPump();
         if (!compatToggle.checked || typeof HTMLCanvasElement.prototype.captureStream !== "function") {
+          streamCanvas.classList.add("hidden");
           log("Using raw camera WebRTC track.");
           return localStream;
         }
 
-        await sourceVideo.play().catch(() => {});
-        await waitForVideoReady(sourceVideo);
+        // Important for car/capture browsers:
+        // draw from the SAME visible preview that you already confirmed works,
+        // not from a hidden/offscreen video element. Some embedded browsers
+        // happily show the preview but return black frames from an offscreen video.
+        await localVideo.play().catch(() => {});
+        await waitForVideoReady(localVideo);
 
         const track = localStream.getVideoTracks()[0];
         const settings = track?.getSettings?.() || {};
-        const sourceWidth = sourceVideo.videoWidth || settings.width || 1280;
-        const sourceHeight = sourceVideo.videoHeight || settings.height || 720;
+        const sourceWidth = localVideo.videoWidth || settings.width || 1280;
+        const sourceHeight = localVideo.videoHeight || settings.height || 720;
         const maxWidth = 1280;
         const scale = Math.min(1, maxWidth / sourceWidth);
         const width = Math.max(320, Math.round(sourceWidth * scale));
         const height = Math.max(180, Math.round(sourceHeight * scale));
 
-        canvas = document.createElement("canvas");
+        canvas = streamCanvas;
         canvas.width = width;
         canvas.height = height;
-        canvasCtx = canvas.getContext("2d", { alpha: false, desynchronized: true });
+        canvas.classList.remove("hidden");
+        canvasCtx = canvas.getContext("2d", { alpha: false, desynchronized: false });
 
+        let frameNo = 0;
         function draw() {
-          if (!localStream) return;
+          if (!localStream || !canvasCtx) return;
+          frameNo += 1;
           try {
-            if (sourceVideo.readyState >= 2 && sourceVideo.videoWidth > 0) {
-              canvasCtx.drawImage(sourceVideo, 0, 0, canvas.width, canvas.height);
+            canvasCtx.fillStyle = "#000";
+            canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (localVideo.readyState >= 2 && localVideo.videoWidth > 0) {
+              canvasCtx.drawImage(localVideo, 0, 0, canvas.width, canvas.height);
+            } else {
+              canvasCtx.fillStyle = "#111827";
+              canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
             }
+
+            // Diagnostic overlay. If the viewer sees this but not the camera,
+            // WebRTC works and only the camera draw is black. If viewer sees
+            // pure black with no text, captureStream/encoding is the problem.
+            canvasCtx.fillStyle = "rgba(0,0,0,0.55)";
+            canvasCtx.fillRect(12, 12, Math.min(canvas.width - 24, 540), 74);
+            canvasCtx.fillStyle = "#ffffff";
+            canvasCtx.font = "24px system-ui, -apple-system, Segoe UI, sans-serif";
+            canvasCtx.fillText("V5 canvas live feed", 28, 42);
+            canvasCtx.font = "17px system-ui, -apple-system, Segoe UI, sans-serif";
+            canvasCtx.fillText(`${new Date().toLocaleTimeString()} · frame ${frameNo}`, 28, 70);
           } catch (err) {
             log(`Canvas draw warning: ${err.message || err}`);
           }
@@ -992,13 +1032,14 @@
         const stream = canvas.captureStream(fps);
         const outTrack = stream.getVideoTracks()[0];
         if (outTrack) outTrack.contentHint = "motion";
-        log(`Using compatibility canvas WebRTC stream: ${width}x${height} @ ${fps}fps.`);
+        log(`Using V5 visible-preview canvas WebRTC stream: ${width}x${height} @ ${fps}fps.`);
         return stream;
       }
 
       function stopCanvasPump() {
         if (drawRaf) cancelAnimationFrame(drawRaf);
         drawRaf = null;
+        streamCanvas.classList.add("hidden");
         canvas = null;
         canvasCtx = null;
         if (outgoingStream && outgoingStream !== localStream) {
@@ -1134,6 +1175,7 @@
             remoteVideo.srcObject = stream;
             remoteVideo.classList.remove("hidden");
             localVideo.classList.add("hidden");
+            streamCanvas.classList.add("hidden");
             placeholder.classList.add("hidden");
             await remoteVideo.play().catch((err) => log(`remoteVideo.play warning: ${err.message || err}`));
             setStatus("Watching live", "Direct camera feed connected.", true);
@@ -1244,6 +1286,7 @@
         localVideo.srcObject = null;
         sourceVideo.srcObject = null;
         localVideo.classList.add("hidden");
+        streamCanvas.classList.add("hidden");
         role = "idle";
         startBtn.classList.remove("hidden");
         watchBtn.classList.remove("hidden");
