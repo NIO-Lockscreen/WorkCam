@@ -825,22 +825,46 @@
         setStatus("Connecting…", "Connecting to realtime signaling…");
         log(`Connecting to Ably channel ${CHANNEL_NAME}`);
 
+        // First test the Vercel token route directly. This gives a useful error
+        // instead of the vague Ably timeout if ABLY_API_KEY is missing/wrong.
+        const tokenUrl = `/api/ably-token?clientId=${encodeURIComponent(CLIENT_ID)}&t=${Date.now()}`;
+        let tokenRequest = null;
+        try {
+          const tokenRes = await fetch(tokenUrl, { cache: "no-store" });
+          const raw = await tokenRes.text();
+          if (!tokenRes.ok) throw new Error(`/api/ably-token returned ${tokenRes.status}: ${raw.slice(0, 180)}`);
+          tokenRequest = JSON.parse(raw);
+          if (!tokenRequest || !tokenRequest.keyName || !tokenRequest.signature) throw new Error("/api/ably-token did not return a valid Ably token request.");
+          log("Vercel token route OK.");
+        } catch (err) {
+          throw new Error(`Ably token route failed. Check Vercel env ABLY_API_KEY and redeploy. Details: ${err.message || err}`);
+        }
+
+        try { ably?.close?.(); } catch {}
         ably = new Ably.Realtime({
-          authUrl: `/api/ably-token?clientId=${encodeURIComponent(CLIENT_ID)}`,
-          authMethod: "GET",
+          authCallback: (params, callback) => callback(null, tokenRequest),
           clientId: CLIENT_ID,
-          recover: (lastConnectionDetails, cb) => cb(true)
+          autoConnect: true,
+          recover: (lastConnectionDetails, cb) => cb(true),
+          // Some in-car browsers are bad with WebSockets. Let Ably fall back.
+          transports: ["web_socket", "xhr_streaming", "xhr_polling"]
+        });
+
+        ably.connection.on((stateChange) => {
+          const reason = stateChange.reason?.message || stateChange.reason?.code || "";
+          log(`Ably: ${stateChange.previous} → ${stateChange.current}${reason ? ` (${reason})` : ""}`);
         });
 
         await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error("Realtime signaling timed out.")), 12000);
+          const timeout = setTimeout(() => reject(new Error("Realtime signaling timed out after 45s. The car browser/network may be blocking Ably realtime traffic.")), 45000);
           ably.connection.once("connected", () => { clearTimeout(timeout); resolve(); });
           ably.connection.once("failed", (stateChange) => { clearTimeout(timeout); reject(new Error(stateChange.reason?.message || "Ably connection failed.")); });
+          ably.connection.once("suspended", (stateChange) => { clearTimeout(timeout); reject(new Error(stateChange.reason?.message || "Ably connection suspended.")); });
         });
 
         channel = ably.channels.get(CHANNEL_NAME);
         await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error("Channel attach timed out.")), 10000);
+          const timeout = setTimeout(() => reject(new Error("Channel attach timed out after 20s.")), 20000);
           channel.attach((err) => {
             clearTimeout(timeout);
             if (err) reject(err);
@@ -995,12 +1019,13 @@
       async function startCamera() {
         try {
           if (!navigator.mediaDevices?.getUserMedia) throw new Error("Camera access is not supported in this browser.");
-          await connectSignaling();
           stopAllConnections(false);
           role = "camera";
           activeDeviceId = cameraSelect.value || "";
-          setStatus("Starting camera…", "Requesting camera access…");
+          setStatus("Starting camera…", "Requesting camera access first…");
 
+          // Start the actual camera BEFORE realtime signaling. This proves the
+          // car/capture camera works locally even if Ably/Vercel setup is wrong.
           localStream = await getCameraStream(activeDeviceId);
           const actualDeviceId = localStream.getVideoTracks()[0]?.getSettings?.().deviceId;
           if (!activeDeviceId && actualDeviceId) activeDeviceId = actualDeviceId;
@@ -1013,23 +1038,28 @@
           await sourceVideo.play().catch(() => {});
           await localVideo.play().catch(() => {});
           await loadCameras();
-
           outgoingStream = await createOutgoingStreamFromPreview();
 
           startBtn.classList.add("hidden");
           watchBtn.classList.add("hidden");
           stopBtn.classList.remove("hidden");
           statusDot.classList.add("live");
-          setStatus("Camera live", "Camera is ready. Viewer can press Watch now.", true);
+          setStatus("Camera preview works", "Camera is on. Connecting realtime signaling now…", true);
 
+          await connectSignaling();
+
+          setStatus("Camera live", "Camera is ready. Viewer can press Watch now.", true);
           publishSignal("camera-ready", "all", { clientId: CLIENT_ID, label: cameraSelect.selectedOptions[0]?.textContent || "Camera" });
           clearInterval(cameraReadyTimer);
           cameraReadyTimer = setInterval(() => publishSignal("camera-ready", "all", { clientId: CLIENT_ID }), 4000);
           log("Camera started. Waiting for viewer offer.");
         } catch (err) {
-          alert(`Could not start camera: ${err.message || err}`);
-          log(`Start camera failed: ${err.message || err}`);
-          stopAllConnections(true);
+          const message = err.message || String(err);
+          alert(`Could not start camera/signaling: ${message}`);
+          log(`Start camera/signaling failed: ${message}`);
+          // Keep the local preview visible if camera already started; it helps debug.
+          if (!localStream) stopAllConnections(true);
+          else setStatus("Camera preview only", "Camera works locally, but realtime signaling failed. Check debug log / ABLY_API_KEY.", true);
         }
       }
 
